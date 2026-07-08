@@ -1,0 +1,343 @@
+### Apache : Serveur HTTP - httpd.apache.org - devdocs.io
+
+- sudo apt update && sudo apt install apache2
+    > Après installation apache va démarrer le serveur sur le port `80` ou `localhost` - Vu qu'on est sur une machine virtuel on modifie la partie `Rédirection de port` dans la configuration réseau de virtualbox pour avoir accès sur ma machine hôte
+- sudo systemctl start apache2 : Démarrer apache `o`
+- sudo systemctl enable apache2 : Activer apache au démarrage `o`
+- sudo systemctl stop apache2 && sudo systemctl disable apache2 : Arrêter et désactiver apache
+- sudo apt remove apache2 : Supprimer apache
+    > sudo apt purge apache2 : Supprimer complètement avec ses fichiers de configuration
+    > sudo apt autoremove : Nettoyer les dépendances
+    > sudo apt autoclean : Nettoyer les dépendances inutiles
+- sudo systemctl status apache2 : Voir le status d'apache
+- sudo systemctl restart apache2 : Redémarrer apache
+- sudo systemctl reload apache2 : Recharger la configuration sans couper les connexions
+
+- Configuration d'apache `/etc/apache2/apache2.conf`
+    > Les fichiers de configuration d'apache sont morcelés
+        > `mods-enabled` : Contient les fichiers de configuration correspondant au différents modules
+        > `conf-enabled` : && pour de la config supplémentaire
+        > `sites-enabled` : && pour le virtualhost
+    > Port sur lequel apache écoute dans `/etc/apache2/ports.conf`
+        > Listen : Permet de spécifier sur quel port il démarre, par défaut `80`
+        > ssl_module : Pour le https, par défaut `443`
+    > sudo apache2ctl configtest | /usr/sbin/apache2ctl configtest : Pour vérifier la syntaxe
+    > sudo systemctl restart apache2 | sudo service apache2 reload : Redémarrer apache et recharger la configuration
+
+    > `sites-available` : Contient des fichiers de configuration des sites `000-default.conf` - `default-ssl.conf`, `000` pour que la configuration soit toujours charger en premier car elle sont chargés par ordre alphabétique
+    > `sites-enabled` : Contient des liens symboliques qui pointe vers le dossier `sites-available`, en général on crée la configuration de nos sites dans le dossier `sites-available` et quand on vas vouloir activer ou désactiver un site on activera ou désactivera nos liens symboliques
+
+- Dans `sites-available/000-default.conf` : On a un `VirtualHost`, lorsqu'on vas travailler avec apache on va créer des serveurs virtuels car on veut pouvoir héberger plusieurs sites sur le même serveur
+    > <VirtualHost *:80>
+        > ServerAdmin : En cas d'erreur, envoi un mail a cet email pour signaler le problème
+        > DocumentRoot : Le chemin des dossiers, par defaut affiche le fichier `/var/www/html/`
+        > ErrorLog : Lorsqu'on aura des erreurs il va écrire dans ce fichier log d'apache
+        > CustomLog : Contient les logs d'accès, dès que quelqu'un va accéder à notre site il sera logger dans ce fichier
+        > LogLevel : Pour limiter les informations à un certains niveau d'alerte
+
+- Maintenant on vas se connecter à notre serveur pour envoyer nos projet, si on n'a pas FTP on peut utiliser **FileZilla** avec notre accès ssh grâce à **SFTP**, une fois connecté dans mon dossier personel je vais crée un dossier `www` et y déplacer mon projet
+- Ensuite modifier le fichier `sites-available/000-default.conf` pour pointer vers notre projet, on aura `Forbidden` pour comprendre la source de l'erreur `/var/log/apache2/error.log`, On tape dans le terminal `tail -n 30 /var/log/apache2/error.log` permet de voir la dernière ligne d'un fichier, `n` permet de voir les dernières lignes d'un fichier et une option le nombre de ligne
+- L'erreur est que par defaut apache n'a pas accès à tous les dossiers, pour y remédier il faut modifier le fichier `apache2.conf`, on cherche `/var\/www`
+    > On aura <Directory /var/www/> pour donner les permissions aux dossiers qu'on souhaite
+        > Options Indexes FollowSymLinks : `FollowSymLinks` va nous permettre de suivre les liens symboliques, `Indexes` si on n'a pas de fichier html va lister les contenues du dossier
+        > AllowOverride : Permet de dire que le site peut modifier la configuration à tarvers un fichier `.htaccess`
+        > Require all granted : Tous le monde va avoir accès à ce dossier
+
+- Sol 1 - Donner les permissions à apache sur notre dossier avec une nouvelle *Directory*
+    > *Directory /home/dev/www/>*
+        > Options FollowSymLinks
+        > AllowOverride None
+        > Require all granted
+
+- Sol 2 - Par les liens symboliques
+    > On remet la configuration `000-default.conf` - DocumentRoot `/var/www` au lieu de /html : Vue que j'ai l'option `Indexes` activés il m'affiche les différents dossiers et c'est quelque chose qu'on ne veut pas, mais je veux que mon site se positionne à cette endroit `/var/www` dans ce cas on va passer par les liens symboliques en tapant dans le terminal `ln -s /home/dev/www /var/www/monsite.fr` - Apache vu qu'il a l'option `FollowSymLinks` va suivre ce lien
+
+- Pour pointer un nom de domaine vers notre site, par défaut il faudra en réserver au près d'un hébergeur et le pointer vers notre serveur, mais dans notre cas on vas faire pointer temporairement un nom domaine vers une ip, on peut modifier le fichier `C:\Windows\System32\drivers\etc\hosts` sur notre machine hôte
+    > hosts - 127.0.0.1 monsite.fr 127.0.0.1 www.monsite.fr : Ip + nom de domaine, permet de réacceder au serveur sur l'url `monsite.fr:8080` - Mais si on veut qu'il se dirige directement vers notre app on vas crée un nouveau virtualhost pour lui dire comment se comporter lorsque quelqu'un arrive sur notre serveur avec notre nom de domaine, `www` pour indiquer que c'est la même chose et sous domaine
+
+- On crée un fichier dans `sites-available/001-monsite.conf`
+    > 001-monsite.conf
+        > <VirtualHost *:80>
+            > ServerAdmin admin@gmail.com : En cas d'erreur m'envoi un mail
+            > ServerName monsite.fr : Va correspondre à notre nom de domaine
+            > ServerAlias *.monsite.fr : N'importe quoi suivi de monsite.fr pointe sur ce site
+            > DocumentRoot /var/www/monsite.fr : Va pointer vers le dossier de mon site
+            > <Directory /var/www/monsite.fr>
+                > AllowOverride All : On accepte que le site puisse redéfinir sa configuration à travers `.htaccess`
+                > Options -Indexes +FollowSymLinks : `-Indexes` pour retirer une option, + permet de rajouter
+            > </Directory> 
+            > ErrorLog /home/dev/logs/error.log : Indiquer ou va se trouver les logs, attention à ne pas le mettre dans un dossier accessible
+        > </VirtualHost>
+
+- Pour activer notre site - `a2ensite 001-monsite` : Permet de faire un lien symbolique de mainière auto vers le dossier `sites-enabled`, ensuite `sudo service apache2 reload`
+- Pour rediriger lorsqu'on se connecte à notre site avec `www` renvoyer vers `monsite.fr` on peut le faire au travers du fichier `.htaccess` pour la réecriture d'url
+    > RewriteEngine On
+    > RewriteCond %{HTTP_HOST} ^www.monsite.fr:8080$ [NC]
+    > RewriteRule ^(.*)$ http://monsite.fr:8080 [L,R=301] : `:8080` vu que j'utilise la redirection de port
+
+- En cas d'erreur `Internal Server Error`, on regarde dans les logs et on pourrait tomber sur une erreur du type `RewriteEngine` qui veut dire que le module de réécriture d'url n'est pas activer
+    > ls -la mods-enabled/ : Pour voir la liste des modes qui sont activés
+    > ls -la mods-available/ : Pour voir tous les modes qui sont disponibles
+    > sudo a2enmod rewrite : Activer un module ensuite redémarrer
+    > sudo a2dismod rewrite : Désactiver un module ensuite redémarrer
+
+- On peut mettre en place une rotation des logs qui permettra de séparer les logs en plusieurs fichiers lorsqu'il deviendront trop volumineux car si on n'a un gros trafic les logs peuvent être trop gros
+
+- On peut remodifier la configuration par defaut de `000-default.conf` à `/var/www/html` et dans `apache2.conf` on vas enlever `Indexes` à ne pas utiliser en production, `sudo a2dissite 000-default.conf ` pour désactiver le site par défaut, dans ce cas il prendra le premier site qui arrive, ou au lieu de ça faire une redirection dans quand on se connecte à notre serveur `000-default.conf`, on commente `DocumentRoot` et `ErrorLog` et on ajoute - Redirect 301 / http://monsite.fr:8080
+
+- Les permissions
+    > Lorsqu'on installe apache il crée un utilisateur et un groupe `www-data`, lorsqu'il accede à un dossier il le fais avec cette utilisateur, donc s'il n'a pas les permissions nécéssaire sur un fichier il ne pourra pas l'ouvrir, dans `/etc/apache2/apache2.conf`
+        > User : L'utilisateur d'apache
+        > Group : Le groupe d'utilisateurs
+    > Pour donner les droits de lecture au groupe `www-data` ou à l'utilisateur `www-data` sur notre dossier, on ajoute notre utilisateur `dev` au groupe `www-data` pour qu'il est les même droit que ce groupe
+        > sudo usermod -g www-data dev
+
+- On peut sécuriser apache en désactivant la signature du serveur dans `/etc/apache2/conf-available/security.conf`
+    > ServerTokens Prod
+    > ServerSignature Off
+
+- On peut activer le `HTTPS` avec Certbot et Let's Encrypt
+    > sudo apt install certbot python3-certbot-apache
+    > sudo certbot --apache
+
+
+### Module PHP
+
+- *Fonctionne instantanement mais a l'inconvenient en terme de performance, installer un module sur apache veut dire qu'il va charger à toutes les requêtes, pour les sites à petit trafic ce n'est pas grave mais pour des sites à gros trafic on vas séparer*
+
+- apt-cache search mod-php : Pour chercher un module sur apache
+- sudo apt install libapache2-mod-php8.2 php8.2 : Installer les modules trouvés, après installation il va configurer automatiquement le module
+    > ls /etc/apache2/mods-enabled/ - `php8.2.conf` : On verra notre module qui est activé, pour tester on vas créer `vim /var/www/phpinfo.php` et accéder à ce fichier sur le navigateur
+
+- En cas d'erreur on tombera sur une erreur serveur et il sera dans les logs d'apache
+    > tail logs/error.log : Vu que notre version php se comporte sous forme de module apache, dans log d'apache on se retrouve avec les erreurs php et c'est quelque chose qu'on vas vouloir en production car les erreurs ne sont pas affiché côté serveur
+
+- Si on veut voir les erreurs pour des tests on peut modifier la configuration de php `cd /etc/php/8.2` - apache2 cli mods-available
+    > cd apache2 : Configuration de php pour apache
+        > conf.d : Les configurations des différents modules de php
+            > 10-opcache.ini : Configuration de opcahe
+            > 10.pdo.ini ..
+        > php.ini : Le fichier de configuration pour php
+            > display_errors=On : Pour afficher les erreurs en production et on redémarre apache
+    > ls -l mods-available : Pour voir l'ensemble des modules disponible - json.ini,opcache.ini,pdo.ini,readline.ini
+
+- Installer une extension
+    > apt-cache search php8-curl
+    > sudo apt install php8-curl php8-gd php8-mysql php8-mbstring php8-intl php8-zip php8-sqlite3 php8-xml : Installe le module et fais les liaison automatiquent et activer l'extension, donc si on fais `ls /etc/php8/apache2/conf.d` on verra notre extension installé et `ls /etc/php8/mods-available` on verra le fichier curl.ini
+    > sudo phpenmod php8-curl : Pour activer un module manuellement ensuite redémarrer
+    > sudo phpdismod php8-curl : Pour désactiver un module manuellement ensuite redémarrer
+
+- Pour tester on vas installer un framework
+    > On peut avoir besoin de curl `sudo apt install curl`
+    > On vas d'abord installer **Composer**, à la racine de notre dossier personnel
+        ```php
+        php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+        php -r "if (hash_file('sha384', 'composer-setup.php') === 'c8b085408188070d5f52bcfe4ecfbee5f727afa458b2573b8eaaf77b3419b0bf2768dc67c86944da1544f06fa544fd47') { echo 'Installer verified'.PHP_EOL; } else { echo 'Installer corrupt'.PHP_EOL; unlink('composer-setup.php'); exit(1); }"
+        php composer-setup.php
+        php -r "unlink('composer-setup.php');"
+        ```
+    > On peut vérifier l'installation - `php composer.phar -v`
+        > Si on veut placer le fichier `composer.phar` dans un répertoire inclus dans notre variable d'environnement `PATH`, afin de pouvoir exécuter la commande `composer` depuis n'importe quel répertoire
+            > sudo mv composer.phar /usr/local/bin/composer
+
+    > On vas ensuite installer un framework **Symfony**
+        > composer create-project symfony/skeleton:"7.3.x" my_project : Ensuite `cd my_project`
+        > composer require webapp
+            > Il faut attention lorsqu'on vas installer des projets php, si on le fais avec la commande `php` de notre serveur par défaut il va utilisé la configuration qui est dans le dossier `cli` et non celui du dossier `apache2`, donc si on n'a besoin de module particulier pour l'installation d'un projet et qu'on doit modifier le fichier `php.ini` il faudra l'activer à la fois dans le dossier `cli` et `apache2`
+        > Le problème quand on install un framework php on se retrouve avec un dossier `var` qui doit être accessible en écriture et un dossier `public` qui contient un fichier `index.php` et apache doit pointer vers ce dossier, dans ce cas on modifie le `virtualhost` pour cela, aussi symfony utilise l'extension `php8-xml`, `git` et aussi la `rewrite` réecriture d'url côté apache et ne pas oublié de l'autorisé le `AllowOverride` dans le `virtualhost`
+        > Après installation on peut avoir des erreurs comme des `Permission denied` don on regarde les logs d'apache `tail -n 30 /var/log/apache2/error.log` ou si on n'a spécifié un autre dossier pour les logs, l'erreur vient du fait que lorsque notre framework fonctionne il a besoin d'écrire des logs dans le dossier `var` pour symfony, `storage` pour laravel, apache utilise l'utilisateur et le groupe `www-data`, donc il faut que notre dossier soit accéssible en écriture, aussi si on n'a un système d'upload dans le dossier `public` on lui donne aussi les droits
+            > chmod g+w -R www/var : On rajoute pour le groupe le droit d'écriture, donner la permission au groupe est suffisant vu que j'ai fais appartenir mon utilisateur `dev` au groupe `www-data` de apache
+
+- Pour désactiver le module php d'apache
+    > sudo apache2ctl -M | grep php : Pour lister les modules apache actifs, on doit avoir ` php_module (shared)` si actif
+    > sudo a2dismod php8.4 : Pour le désactiver puis `sudo systemctl restart apache2`
+    > sudo apache2ctl -M | grep php : Pour vérifier que c’est bien désactivé et ne doit rien retourner
+
+- Si on veut changer de version php
+    > sudo a2dismod php8.4
+    > sudo a2enmod php8.3
+    > sudo systemctl restart apache2
+
+
+### PHP FPM - Version de php en mode FastCGI
+
+> Le mode FastCGI permet à un logiciel de commuiniquer avec un serveur http, par défaut ce que l'on fais et d'utiliser le mod php, le problème est que ce mod va être insérer dans toutes les requêtes qui vont être faite par apache, FastCGI permet de dire a apache dès que tu croise un fichier php tu vas communiquer avec un logiciel indépendant php, l'avantage est qu'on utilisera le proccess php que lorsqu'on en aura besoin
+
+- On peut utiliser le module `libapache2-mod-fcgid` mais c'est une ancienne méthode
+    > sudo apt-get install libapache2-mod-fcgid : Si il n'est disponible par défaut
+        > sudo vim /etc/apt/sources.list
+            > deb .. non-free : On accepte les éléments qui sont `non-free` qui sont des archives qui sont disponible mais qui ne correspondent pas au principe du logiciel libre
+            > deb-src .. non-free - Au quatre ligne deb
+        > sudo apt update : Pour mettre à jour la liste des packages
+        > sudo apt install libapache2-mod-fcgid : Installer le mode fastcgi d'apache
+        > sudo apt install php8-fpm : Permet de faire fonctionner php en mode fastcgi
+
+- Ou on peut l'installer en utilisant la manière moderne `proxy_fcgi` qui est un module natif dans apache, avec ça on n'a besoin de configurer la partie module, on peut modifier la configuration de php-fpm si besoin
+    > sudo apt install php8-fpm
+    > sudo a2enmod proxy_fcgi setenvif : Module pour proxy vers php-fpm, `setenvif` nécessaire pour certaines configurations d’environnement
+    > sudo a2enconf php8-fpm : On adapter selon version de notre php
+    > sudo systemctl restart apache2
+        > *Ensuite apache va transmettre les requêtes php vers le socket de php-fpm `/run/php/php8.4-fpm.sock` sans aucun autre module intermédiaire*
+
+- sudo systemctl status php8-fpm : Vérifier que php-fpm fonctionne
+- sudo systemctl start php8-fpm : Démarrer `o`
+- sudo systemctl enable php8-fpm : Activer `o`
+
+- Pour modifier la configuration de php `cd /etc/php8/8.4` - fpm cli mods-available
+    > cd mods-available : Contient les différents mods qui sont disponibles
+    > cd cli : Contient la configration de php en mode ligne de commande
+    > cd fpm : Php en mode fpm
+        > php.ini : Configuration de notre php
+            > display_errors=On : Pour afficher les erreurs non recommandé pour la production
+        > conf.d : Contient les informations conçernant les différentes extensions qu'on a activées
+        > pool.d : fpm fonctionne avec un système de pool, on vas pouvoir lancer plusieurs proccessus qui fonctionne de manière différente
+            > vim www.conf
+                > listen /var/run. : Indique sur quoi va écouter notre processus, donc lorsqu'on voudra faire communiquer apache avec ce processus il faudra lui indiquer ce chemin de socket
+                > user www-data - group www-data : L'utilisateur utilisé par phpfpm
+        > sudo service php8-fpm restart : Redémarer fpm après configuration
+
+- Si on n'a installer le module `libapache2-mod-fcgid` et qu'on essai de traité un fichier php il va nous le rendre comme un fichier classique, pour lui indiquer comment le traité
+    > cd /etc/apache2/mods-available - `fcgid.conf`
+        > vim fcgid.conf
+            > On rajoute dans <IfModule>
+                > AddHandler php8-fcgi .php : Utilise ce handler lorsqu'on utilise le php
+                > Action php8-fcgi /php8-fcgi : Ce qu'il doit exécuter lorsqu'il rencontre les fichiers de type php8-fcgi, qu'il aille vers un fichier de type php8-fcgi
+                > Alias /php8-fcgi /usr/lib/cgi-bin/php8-fcgi : Alias pour faire pointer vers un dossier qui sera utilisable par apache
+            > ls /etc/apache2/mods-enabled : Vérifier si le mod est activé - `fcgid.conf` sinon `sudo a2enmod fcgid`
+            > sudo apache2ctl configtest : Pour tester la configuration
+            > sudo a2enmod actions : On pourrait avoir besoin d'activer ce mode pour le configtest `o`
+    > Activer le module et la configuration php-fpm
+        > sudo a2enmod proxy_fcgi setenvif
+        > sudo a2enconf php8.4-fpm
+        > sudo service apache2 restart
+    > Désactiver ou supprimer le module
+        > sudo a2dismod fcgid
+        > sudo systemctl restart apache2
+        > sudo apache2ctl -M | grep fcgid : Vérifier qu’il est bien désactivé 
+        > sudo apt remove libapache2-mod-fcgid : Si on veut désinstaller
+        > sudo apt purge libapache2-mod-fcgid
+        > sudo apt autoremove --purge
+        > sudo apache2ctl -M : Pour voir tous les modules apache actifs
+
+- Pour désinstaller php fpm
+    > sudo systemctl stop php8.4-fpm
+    > sudo apt remove php8.4-fpm : Désinstaller
+    > sudo apt purge php8.4-fpm : Si on veut supprimer aussi les fichiers de configuration
+    > sudo apt autoremove --purge : Supprimer les dépendances inutilisées
+    > dpkg -l | grep php : Vérifier que tout est bien supprimé, on ne devrais plus voir php8.4-fpm dans la liste
+    > systemctl list-units | grep fpm : Pour vérifier que le service n’existe plus
+
+- Si on veut une architecture avec plusieurs sites différents on peut démarrer autant de workers qu'on a de sites pour pouvoir les faire démarrer avec des utilisateurs différents comme ça l'avantage est que si quelqu'un se fais hacké on ne prend pas le risque que le hack monte vers les autres utilisateurs
+
+- PHP-FPM - On peut séparer chaque site dans son pool si on a plusieurs,  limiter la mémoire et utiliser un utilisateur dédié pour la sécurité
+
+
+- **XAMPP - Apache** Sur windows Dans un fichier .bat
+    > \xampp\xampp_start.exe : Démarrer Apache & MySQL
+    > \xampp\xampp_stop.exe : Arrêter Apache & MySQL
+    > \xampp\apache_start.bat : Démarrer Apache
+    > \xampp\apache_stop.bat : Arrêt de Apache
+    > \xampp\mysql_start.bat : Démarrer MySQL
+    > \xampp\mysql_stop.bat : Arrêter MySQL
+    > \xampp\mercury_start.bat : Démarrer Mercury Mailserver
+    > \xampp\mercury_stop.bat : Arrêter Mercury Mailsever
+    > \xampp\filezilla_start.bat : Démarrer FileZillo Server
+    > \xampp\filezilla_stop.bat : Arrêter FileZilla Server
+- Pour changer le chemin du localhost/ dans `C:\xampp\apache\conf`
+    > DocumentRoot
+    > Directory
+- Pour activer la réecriture d'url
+    > On active le `rewrite_module`
+    > Directory - AllowOveride All
+
+
+
+
+
+
+
+
+
+
+🧵 3. Configuration du pool principal (www.conf)
+
+sudo nano /etc/php/8.2/fpm/pool.d/www.conf
+
+
+[www]
+user = www-data
+group = www-data
+listen = /run/php/php8.2-fpm.sock
+listen.owner = www-data
+listen.group = www-data
+listen.mode = 0660
+
+; Nombre de processus
+pm = dynamic
+pm.max_children = 20
+pm.start_servers = 4
+pm.min_spare_servers = 2
+pm.max_spare_servers = 6
+pm.max_requests = 500
+
+; Logs d’erreurs
+php_admin_value[error_log] = /var/log/php8.2-fpm-www-error.log
+php_admin_flag[log_errors] = on
+
+; En-têtes de sécurité (optionnel)
+php_admin_value[expose_php] = Off
+
+; Limites
+php_admin_value[memory_limit] = 256M
+php_admin_value[upload_max_filesize] = 20M
+php_admin_value[post_max_size] = 25M
+php_admin_value[max_execution_time] = 60
+php_admin_value[max_input_time] = 60
+php_admin_value[session.gc_maxlifetime] = 1440
+
+💡 Ajuste pm.max_children selon la RAM disponible :
+
+RAM pm.max_children
+
+512 Mo 5
+1 Go 10
+2 Go 20
+4 Go 40
+8 Go 80
+
+
+
+
+🧰 8. (Optionnel) Créer plusieurs pools (multi-sites)
+
+Tu peux créer un pool par site ou application pour mieux isoler les ressources :
+
+sudo cp /etc/php/8.2/fpm/pool.d/www.conf /etc/php/8.2/fpm/pool.d/site1.conf
+
+Modifie :
+
+[site1]
+user = site1
+group = site1
+listen = /run/php/php8.2-fpm-site1.sock
+pm.max_children = 10
+
+Puis configure Nginx pour utiliser le bon socket :
+
+fastcgi_pass unix:/run/php/php8.2-fpm-site1.sock;
+
+
+---
+
+🧾 9. Logs et maintenance
+
+Logs FPM : /var/log/php8.2-fpm.log
+
+Logs pool : /var/log/php8.2-fpm-www-error.log
+
+Logs PHP : /var/log/php_errors.log
+
+
+Rotation automatique :
+
+sudo nano /etc/logrotate.d/php8.2-fpm

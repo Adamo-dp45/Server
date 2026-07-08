@@ -1,0 +1,15 @@
+### Ansible `docs.ansible.com` - Permet d'automatiser le deploiment de serveur
+
+- Permet d'automatiser l'installation des outils et leur configuration
+    > La 1ère chose qu'on vas crée est un fichier `hosts` qui va contenir la liste de nos serveurs sur lesquels on veut lancer notre recette
+        > On met un nom de groupe [groupe] suivi des `ip` de nos différents serveurs et quand on vas vouloir créer notre recette et on indique sur quel groupe on install nos outils
+
+    > Pour créer ces recettes ansible utilise la syntaxe `yaml`
+        > Si on'a des serveurs qui utilisent différents login, on peut préciser pour chacun des serveurs comment se logger - `hosts` - `ansible_user`, la connexion se fait via une `clé ssh`
+        > Ansible utilise un système de module qui permet d'indiquer différents tâches à éffectuer
+            > Packaging modules : Permet d'installer des chose qui intègre tous les modules qui permettent d'intéragir avec les gestionnaires de paquets, dans notre cas `apt`
+
+- Une fois le playbook défini, on vas pouvoir le lancé
+    > ansible-playbook -i hosts playbook.yml : `i` fichier hosts et le playbook à utiliser
+        > La commande va lancé une première tâche `setup` qui permet de récupérer des informations sur le système d'exploitation, peut être utile pour savoir sur quel pour faire des conditions quand on n'est sur un debian on fais un `apt` ou sur un autre OS on fais un `yum`
+        > Quand il fini, il nous montre en `vert` ce qui est `ok` et en `jaune` ce qui est `change`, l'avantage des modules est qu'il permet de savoir si une opération à été changé ou pas, si un package est déjà installé il ne le fais plus

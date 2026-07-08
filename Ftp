@@ -1,0 +1,121 @@
+### FTP - File Transfert Protocol
+
+**Proftpd**
+
+- *Parfois on veut que nos utilisateur puissent uploadés des fichiers sur notre serveur et qu'on ne veut pas leur données un accès ssh, on vas devoir passer par un petit accès ftp, l'avantage est que les utilisateurs vont avoir leur propre login et mot de passe qui va leur permettre d'acceder à un dossier personnel* - *Il existe plusieurs outils pour mettre en place ce système de ftp et nous on vas utilisé `proftpd`, il est possible d'utiliser une version avec en plus une base de donnée pour gérer les accès mais nous on vas utiliser la version naturel, on vas relié un utilisateur linux à un utilisateur ftp*
+
+- sudo apt-get install proftpd : Installer la version `standolone`, après installation, un serveur ftp sera lancé sur le port 21, aussi il y'a le mode `inetd` qui est géré par inetd 
+- Pour se connecter à notre système ftp, on vas avoir besoin d'un utilisateur
+    > sudo adduser demo : Ensuite `Y`
+- Ensuite on se connecte à notre utilisateur avec un logiciel de `ftp`
+    > Hôte : L'ip de mon serveur
+    > Identifiant : L'identifiant de l'utilisateur demo
+    > Mot de passe : Le mot de passe de l'utilisateur demo
+    > Port : Par défaut `21`, si on n'a fais une redirection de port on change
+
+- Le problème est que l'utilisateur aura accès à tous nos dossier aussi celui du `root` donc pour limiter
+    > sudo vim /etc/proftpd/proftpd.conf 
+        > DefaultRoot ~ : Permet d'indiquer le chemin racine pour les utilisateurs qui vont se connecter sur notre serveur, on met le dossier personnel de l'utilisateur `~`
+        > Port 21 : Pour changer le port
+        > ServerName "Mon serveur ftp" : `o`
+        > RequireValidShell off : Permet aux utilisateurs ftp de se connecter même s’ils n’ont pas de shell valide `o`
+        > PassivePorts 49152 65534 : Pour activer le mode passif, pour éviter les blocages, puis autorise ces ports dans le pare-feu *sudo ufw allow 49152:65534/tcp* `o`
+    > /etc/proftpd/conf.d : Configuration supplémentaire
+
+    > sudo service proftpd restart | sudo systemctl restart proftpd : Redémarrer après modification de la configuration
+    > sudo systemctl enable proftpd : Permet d'activer proftpd `o`
+
+- Un autre problème à reglé est que un utilisateur ftp est un utilisateur linux, donc s'il veut se connceter à ssh il pourra le faire, donc la solution est de modifier notre configuration ssh pour indiquer pour empêcher les utilisateur non repertorié de se connecter
+    > sudo vim /etc/ssh/sshd_config
+        > On ajoute `AllowUsers dev` mon utilisateur actuelle `dev` : Pour autoriser que certains utilisateurs
+    > sudo service ssh restart
+
+- Un autre est d'empêcher l'utilisateur d'uploader de trop gros fichier sur notre serveur, on vas le gérer au niveau du système d'exploitation, si il upload un fichier de grande taille ça peut bloquer notre serveur donc on vas mettre en place un système de `quota`
+    > sudo apt install quota : Installer quota
+    > sudo vim /etc/fstab : On vas modifier la configuration de notre point de montage pour lui dire d'utiliser ce système de quota
+        > .. errors=remount-ro,usrquota : On rajoute usrquota
+    > sudo mount -o remount / : On remonte le point racine
+    > sudo quotacheck -cum : On créer les fichiers de configuration, `-c` créer les fichiers de configurations, `u` créer les fichiers de configurations par rapport à notre système d'utilisateur, on pourrait rajouter `g` si on voulais le faire pour les groupes, `m` c'est pas utile qu'il remonte le système
+    > sudo quotaon / : Enfin, on met en place notre système de quota
+    > sudo edquota demo : On édite le quota d'un utilisateur
+        > blocks : Taille disponible, nombre de blocks utiliser par l'utilisateur
+            > soft : Nombre de blocks soft maximum
+            > hard : Nombre de blocks hard maximum - Dans notre cas on limiter celui-ci à 10M - 10240
+        > inodes : Nombre d'inodes utilisés
+            > soft : Limite sur les inodes soft
+            > hard : Nombre d'inodes hard maximum
+    > sudo quota demo : Pour être au courant de ce qui passe sur notre serveur, observer le quota d'un utilisateur
+    > sudo requota -a : Pour voir le quota de tous nos utilisateurs
+
+- *Ce système de quota n'est pas liées à proftpd, donc on pourrait changer notre système de ftp sans toucher à quota*
+
+- Une autre astuce est de modifier le shell utiliser par l'utilisateur, comme ça il ne pourra plus se connecter à ssh
+    > sudo usermod -s /sbin/noshell demo : On lui donne un shell qui n'existe pas
+    > sudo vim /etc/proftpd/proftpd.conf : On décommente `RequireValidShell off` de la configuration de proftpd et l'utilisateur pourra se connecter à ftp sans avoir un shell valide
+
+- Les logs
+    > tail -n 30 /var/log/proftpd/error.log : Les logs d'erreurs
+    > tail -n 30 /var/log/proftpd/access.log : Les logs d'accès
+
+- Pare-feu Ufw - `sudo ufw allow 21/tcp`
+
+- On peut configurer ftp en mode passif qui est souvent nécessaire pour traverser un `firewall/NAT` dans `/etc/proftpd/proftpd.conf`, ensuite autoriser les ports dans le firewall `sudo ufw allow 49152:65534/tcp`
+    > PassivePorts 49152 65534
+
+- On peut activer `TLS` pour sécuriser les connexions ftp et restreints le firewall
+    > On créer d'abord un certificat auto-signé
+        > sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /etc/ssl/private/proftpd.key \
+            -out /etc/ssl/certs/proftpd.crt
+    > Dans `/etc/proftpd/proftpd.conf`
+        > TLSEngine on
+        > TLSLog /var/log/proftpd/tls.log
+        > TLSProtocol TLSv1.2 TLSv1.3
+        > TLSRSACertificateFile /etc/ssl/certs/proftpd.crt
+        > TLSRSACertificateKeyFile /etc/ssl/private/proftpd.key
+        > TLSOptions NoCertRequest
+        > TLSRequired on
+
+
+**Vsftpd** - sudo apt install vsftpd
+
+- Configuration `/etc/vsftpd.conf`
+    > write_enable=YES : Permet l’upload
+    > local_umask=022 : Pour restreindre l’utilisateur dans son dossier
+    > chroot_local_user=YES : Pour empêcher l'utilisateur d'acceder au dossier de root
+    > listen=YES : Pour écouter en standalone
+    > anonymous_enable=NO : Pour désactiver ftp anonyme
+    > local_enable=YES : Pour autoriser les utilisateurs systèmes
+    > allow_writeable_chroot=YES : Pour éviter problème avec chroot + upload
+- sudo systemctl restart vsftpd
+
+- sudo adduser demo : Créer un utilisateur ftp et lui donner un mot de passe
+    > Le dossier personnel sera accessible via ftp `/home/demo`
+
+- On peut configurer ftp en mode passif dans `/etc/vsftpd.conf`, ensuite autoriser les ports dans le firewall `sudo ufw allow 40000:50000/tcp`
+    > pasv_min_port=40000
+    > pasv_max_port=50000
+
+- On peut activer `TLS` pour sécuriser les connexions ftp et restreints le firewall
+    > On créer d'abord un certificat auto-signé
+        > sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /etc/ssl/private/vsftpd.key \
+            -out /etc/ssl/certs/vsftpd.crt
+    > Dans `/etc/vsftpd.conf`
+        > ssl_enable=YES
+        > allow_anon_ssl=NO
+        > force_local_data_ssl=YES
+        > force_local_logins_ssl=YES
+        > rsa_cert_file=/etc/ssl/certs/vsftpd.crt
+        > rsa_private_key_file=/etc/ssl/private/vsftpd.key
+
+- Les logs `tail -n 30 /var/log/vsftpd.log`
+- Pare-feu Ufw - `sudo ufw allow 21/tcp`
+- *vsftpd supporte les utilisateurs virtuels via `PAM` ou un fichier db, utile pour plusieurs domaines*
+
+
+
+
+## Issues
+
+- `Le mode passif`

@@ -1,0 +1,107 @@
+### Redis - Base de données de type clé et valeur et sauvegarde les informations en mémoire
+
+- sudo apt-get install redis-server
+- sudo systemctl start redis : Démarrer redis
+- sudo systemctl stop redis : Arrêter redis
+- sudo systemctl restart redis : Redémarrer redis
+- sudo systemctl status redis : Vérifier le statut de redis
+- sudo systemctl enable apache2 : Activer redis au démarrage `o`
+- redis-cli : Lancer le client interactif
+    > redis-cli monitor : Pour observer ce qui se passe
+- redis-cli -h host -p port -a motdepasse : Se connecter à distance, `h` le host, `p` le port et `a` le mot de passe
+
+redis-server --version
+
+- Configuration `/etc/redis`
+    > sudo vim redis.conf : Fichier de configuration
+        > demonize yes : Veut dire qu'il doit tourner en tâche de fond
+        > pidfile : Permet de connaitre le processus qui est lancé
+        > port 6379 : Port par defaut
+        > bind 127.0.0.1 : Ou on bind, par defaut il écoute qu'en local, pour le rendre accessible dépuis l'extérieur 0.0.0.0.0 dans ce cas on cherche la ligne `requirepass` pour définir un mot de passe
+            > redis-cli
+                > AUTH password -- Si on n'a activer le mot de passe
+        > databases 16 : Permet de définir le nombre de base de données qui vont être démarer dès le lancement de redis
+
+    > La partie `snapshots` permet de déterminer à quelle fréquence vont être sauvegarder les informations sur notre disque car redis sauvegarde les informations en mémoire
+        > Par défaut il y'a un système de `snapshots` introduit qui permet de sauvegarder les informations sur notre disque à un interval de temps régulié
+            > save 900 1 : Par défaut on a ces 3 lignes, `900` interval de temps, `1` nombre d'écriture qui vont déclenché un snapshots, ça veut que toutes les 900s s'il y'a eu au moins une écriture il fera un snapshots
+            > save 300 10 : Toutes les 300s s'il y'a eu au plus de 10000 écritures il fera un snapshots
+            > save 60 10000 : Toutes les minutes s'il y'a eu au moins 2 écritures il fera un snapshots
+        > Là il faut faire attention lors du réglage car faire un `snapshots` signifie transposé toutes les données qu'on a sur redis sur notre disque qui en général prend du temps, ensuite dans les lignes suivantes on peut gérer différents informations sur le snapshots
+
+    > La partie `limit` permet de spécifier le nombre de personnes qui peuvent se connecter à notre redis et on n'a le `maxmemory-policy`, globalement les informations sauvegarder dans redis sont dans la `RAM` or c'est un espace qui un peu restreint que notre disque dur
+        > maxmemory-policy noeviction : La politique pour gérer la mémoire RAM
+            > noeviction : Lorsque la ram est rempli redis va refusé d'ecrire quand on vas vouloir le faire
+            > volatile-ttl : S'il y'a des truc qui allait expiré dans le futur, je les dégage pour faire de la place
+            > allkeys-random : On dégage une clé au hasard
+            > volatile-random : On dégage une clé au hazard mais qui a un ttl particulier
+            > allkeys-lru : Les clé les plus moins utilisés seront les premières dégagés
+            > volatile-lru : Pour supprimer les données qui sont volatile `r`
+        > maxmemory 256mb : Pour la mémoire utilisée
+
+    > La partie `slow_log` au cas ou une requête prend trop de temps, il va le logger
+    > La partie `appendonly` sert aussi à la persistance et désactiver par défaut
+    > La partie `cluster` pour avoir quelque chose de plus distribué
+    > La partie `replication` au cas si on n'a plusieurs serveurs, on peut faire ne sorte de distribuer les informations et de répliqué pour avoir un serveur `master` et des serveurs `esclaves` qui vont récupérer des informations
+
+- Si on souhaite intéragir avec Redis dans le terminal on tape **redis-cli** qui est dans `/etc/redis` - Ce qui nous permettra de taper de petite commande et tester des choses :
+
+    > SET demo "Salut" - Définir une valeur
+    > GET demo - Récupérer une valeur, nous donne "Salut"
+    > DEL demo - Supprimer une clé
+    > INCR days 0 - Incrémenter une valeur
+    > DECR days 1 - Décrémenter une valeur
+    > TTL demo - Temps de vie d'une clé, -1 veut dire n'expire pas
+    > EXPIRE demo 120 - Expire au bout de 120 s
+
+    > RPUSH tutoriels "Ajax" - Pour créer une liste de valeur
+    > LPUSH tutoriels "Try catch" - Pour rajouter dans la liste
+    > LRANGE tutoriels 0 -1 - Récupère toutes les infos et on peut lui préciser l'index de départ et l'index de fin, 0 -1 tous - 0 0 premier
+    > LLEN tutoriels - Taille de la liste
+    > LPOP tutoriels - Retire le première élément
+    > RPOP tutoriels - Retire le dernier élément
+
+    > SADD users 'Marie' - Liste a valeur unique
+    > SMEMBERS users - Liste des éléments
+    > SREM users 'Marie' - Supprimer une valeur
+    > SUNION users users2 - Fusionner deux listes
+
+    > ZADD score 10 'Marie' - ZADD score 15 'Ange'
+    > ZRANGE score 0 -1 - Pour avoir les infos de manière ordonné du plus petit au plus grand
+    > ZREVRANGE score 0 -1 - && du plus grand au plus petit
+    > ZRANK 'Marie' - Voir la position
+    > ZREM 'Marie' - Supprimer la valeur
+
+    > SUBSCRIBE tutoriels users - L'utilsateur peut choisir le subscribe te s'abonner à différent canaux et va le laisser ouvert
+    > PUBLISH tutoriels "Nouveau tuto" - On se connecter à redis-cli et on publie en choisissant le canaux sur lequel on veut publier
+    > PSUBSCRIBE users* - On s'abonne à tous les canaux qui commençe par users
+
+    > HSET user:1 age 10 - HSET user:1 email "f.fr" - HMSET user:1 age 10 email "f.fr"
+    > HGETALL user:1 - Toutes les valeurs de la clé
+    > HGET user:1 age - La valeur de age
+    > HINCRBY user:1 age 10 - Incrémente la valeur de age
+    > HKEYS user:1 - Les clés
+    > HVALS user:1 - Les valeurs
+
+    > KEYS * - L'ensemble des clés qui ont été sauvegarder sur ma base de données 0
+    > SELECT 1 - Va choisir une autre bd, dans la config redis par defaut on n'a 16 bd
+
+    > SETBIT bitmap 7 1
+    > GETBIT bitmap 7
+
+    > FLUSHALL - Supprimer toutes les clés
+    > FLUSHDB - Supprimer toutes les clés de la base de données courante
+    > EXIT - Pour quiter la cli
+
+    > *Quand on change la valeur d'une clé son temps TTL est reset*
+
+- Accès distant au serveur redis `/etc/redis/redis.conf`
+    > bind 0.0.0.0
+    > protected-mode no
+    > requirepass et firewall
+        > redis-cli ping : Tester la connexion
+
+- Les logs de redis `/var/log/redis/redis-server.log`
+
+- **Redis Desktop Manager** - Logiciel d'interface visuel
+- Pour intéragir avec Redis sur le serveur avec php on peut installer `sudo apt-get install php-redis`

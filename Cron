@@ -1,0 +1,49 @@
+### Cron - Tâche recurente
+
+- sudo apt install cron : Installer cron
+    > sudo yum install cronie : Pour les distributions basées sur CentOS/Red Hat
+
+- crontab -l : Lister toutes les tâches que nous avons actuellement
+- crontab -u demo -l : Pour afficher les crontab d'un utilisateur
+- crontab -r : Supprimer toutes les tâches cron de l'utilisateur
+
+- crontab -e : Pour ajouter ou modifier des tâches, nous demande l'éditeur qu'on veut utiliser et va nous ouvrir notre fichier pour qu'on écris la tâche
+    > 0 2 * * * : minutes - heures - jour du mois - mois - jour de la semaine : Ce cron signifie tous les jours de la semaine
+        > Pour `jour de la semaine` c'est à l'anglaise donc il commençe par le dimanche qui est `0` mais sur d'autres système il est représenté par le `7`
+        > `*` tous les intervalles
+    > 0 2-6 * * * : `-` pour lançer la tâche entre 2h et 6h, toutes les heures pendant 4h
+    > 0 2-8/2 * * * : `/2` pour Lançer toutes les 2h, 2h - 4h - 8h, si l'intervalle n'est pas correcte il le fera dans ceux qui le sont
+    > 0 8-18 * * 1-5 : Tous les jours du lun-ven de 8h à 18h
+    > Pour écrire un cron
+        > 0 2 * * * php /var/www/monsite/backup.php : `php..` la tâche à exécuter
+
+- Commande de test
+    > date -d today +%d : Pour avoir la date d'aujourd'hui
+    > date -d tomorrow +%d : Pour avoir la date de demain
+    > test $(date -d tomorrow +%d) -eq 03 : Vérifie si la date est égale
+    > test $(date -d tomorrow +%d) -eq 03 && echo "Commande lancé" : Si oui va exécuter la commande echo
+
+- Dans la situation ou on veut envoyer des factures à la fin de chaque mois 
+    > 0 0 28-31 * * php /var/www/monsite/feature.php : Va fonctionner en février car il fini le `28` par contre pour un mois qui fini le `31` la tâche sera lançer le 28,29,30,31 du coup la tâche sera lançer 4x au lieu de 1x
+    > 0 0 28-31 * * test $(date -d tomorrow +%d) -eq 1 && php /var/www/monsite/feature.php : On vérifie si la date de demain est `1` avant de faire notre tâche
+
+- Test
+    > crontab -e
+        > * * * * * echo $PATH >> ~/crontest 2>&1 : La tâche s'exécute toute les minutes, `>>` permet de logger la sortie, `2>&1` pour rediriger les erreurs vers le même fichier
+    > On attend une minute le temps que la tâche s'exécute et on tape `cat ~/crontest` pour voir le fichier et à l'intérieur on remarque que le contenu de la variable $PATH est différente quand on tape `echo $PATH` normalement dans le bash, ce qu'il faut comprendre est que les tâches cron ne vont pas être exécuter forçement avec le même environnement que les tâches qu'on exécute de manière classique, donc si on veut éxécuter une commande qui utilise `php` vérifier si elle n'est pas dans un chemin standard et dans un de ces 2 chemins là, taper la commande `which php` pour chercher ou se trouve notre commande php et de mettre le chemin complet dans le fichier cron ou dans notre fichier cron on redéfinir la variable $PATH - PATH=/usr/local/sbin:/home/dev/bin : Va chercher dans le dossier bin de mon utilisateur
+
+- En cas d'échec
+    > Dans le cas ou le tâche échoue par défaut il envoi un email, si je n'ai pas configurer mon système de mail il l'envoi dans `/var/mail` , par défaut il envoi l'email à l'administrateur de notre serveur, donc pour changer l'email on peut le faire dans le fichier cron avec la variable - MAILTO=server@droapp.com : Nom de domaine par ex - Automatiquement cette variable va faire que toute les commandes même celle qui n'ont pas échoué vont être envoyés à cette email
+
+- Shell
+    > Pour changer le shell utilisé par cron, on peut le faire dans le fichier cron avec la variable - SHELL=/usr/bin/zsh
+
+- Exécuter cron en tant que root
+    > sudo crontab -e : Donne un fichier cron avec un niveau superieur, celui de l'administrateur
+    > Dans `cd /etc` - `ls /etc | grep cron` : Pour les fichiers cron
+        > On a différents des dossiers `cron.daily` - `cron.hourly` - `cron.monthly` - `cron.weekly` qui permettent à l'intérieur d'intégerer des script qui vont devoir se lancé toutes les minutes,heures,jours,mois,semaine, si j'ai besoin de rajouter des opérations ou des scripts à exécuter de manière journaliaire je peux les placés dans ces dossiers là, ces fichiers sont éxécuter dans le dossier `crontab`
+    > Par défaut tous les utilisateurs ont la possibilité d'exécuter leurs cron, pour limiter les droits des utilisateurs on créer un fichier `cron.allow` lister les utilisateurs qui ont le droit de modifier leur tâche récurente ou créer un fichier `cron.deny` pour lister ceux qui n'ont pas le droit, on met le fichier dans `vim /etc/cron.deny`
+
+
+- Les tâches cron sur `Windows`
+    > Planificateur de tâche - Créer une tâche : On donne un nom, on vas sur l'onglet `Déclencheurs` et sur `Nouveau` pour définir la fréquence d'exécution, ensuite l'onglet `Actions` et `Nouveau` dans le champ `Programme/script` chemin de l'executable de php, enfin dans le champ `Ajouter` des arguments on met le chemin de notre script

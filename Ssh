@@ -1,0 +1,68 @@
+### SSH - Se connecter à un serveur à distance
+
+- sudo apt-get install openssh-server : Installer ssh
+    > sudo systemctl status ssh : Pour voir l'état du serveur ssh
+
+- Accéder à notre serveur dans `virtualbox`
+    > Par défaut notre machine communique avec internet mais il n'est pas possible dépuis notre machine hôte d'acceder a ce serveur donc on va devoir modifier les paramètres réseaux de notre machine virtuel dans la partie `Redirection de ports`
+
+- Sur windows **baboune**, **Cygwin** pour les cmd sur linux, on a aussi le logiciel **PuTTY** qui nous permet de nous connecter à ssh
+- Pour se connecter avec ssh via **FileZila** on choisi l'option `sftp`
+
+- Se connecter au serveur dépuis notre machine hôte
+    > ssh dev@127.0.0.1 -p 2222 : `dev` le login de notre machine, `127.0.0.1` l'ip de la machine distante ou le nom de domaine, `p` pour modifier le port par defaut 22, ensuite il demande le mot de passe de l'utilisateur, `-vvv` pour plus d'information
+
+- Configuration `/etc/ssh/sshd_config`
+    > Port : Au niveau du port on peut n'importe quoi tant que ce n'est pas un choisi dans le système
+    > ListenAddress : On peut limiter sur le nombre d'adresse qu'il écoute mais l'inconvenient est que si on perd notre ip on ne pourra plus s'y connecter
+    > PermitRootLogin no : En général si on n'est sur serveur on n'a pas envie que les gens puissent se connecter en root, on va se connecter avec à notre utilisateur standard `dev` et si on n'a besoin de l'accès root on fais un `sudo` mais jamais on vas se connecter en root, l'avantage est que si quelqu'un arrive à se connecter à notre ssh n'aura pas un accès root car il ne connait pas le mot de passe root, par defaut `prohibit-password`
+    > AllowUsers : Permet aussi de limiter les accès à ssh
+
+- sudo service ssh restart : Redémarrer après modification de la configuration
+
+- Une seconde sécurité qu'on peut ajouter est d'empêcher les utilisateurs de se connecter avec un mot de passe en utilisant un système de clé
+    > Générer une clé ssh sur ma machine hôte
+        > ssh-keygen -t rsa -b 4096 -C "Adama" : `b` nombre de bit au dela de 1024 recommandé et le nom ou commentaire est celui a qui appartient la clé, `rsa` est un peu ancienne, on a aussi `dsa`, les clé dans `C:\Users\ADAMO\.ssh`
+
+    > Ensuite je me reconnecte au serveur pour copier ma clé sur mon serveur
+        > Dans mon dossier utilisateur je vais devoir lui lister les clés que j'autorise, à la racine de mon serveur je crée un dossier `mkdir -m 700 .ssh` la permission 700 veut dire l'utilisateur a le droit de tous et les autres de rien, Ensuite je vais dans le dossier `cd .ssh` et je crée un fichier `vim .ssh/authorized_keys` et à l'intérieur je vais copier la clé publique `id_rsa_pub` de ma machine hôte et modifier les permissions de cette clé en 600 `chmod 600 .ssh/authorized_keys` sinon ssh n'accepte pas ce fichier. Après ça je quitte ce système et je me connecte `ssh dev@127.0.0.1 -p 2222` et il ne vas pas me demander mon mot de passe, enfin je vais modifier ma configuration de shh `sudo vim /etc/ssh/sshd_config`, je cherche `PasswordAuthentication` et je le met a `no` et du coup plus personne ne pourra se connecter en utilisant les mots de passe et je redémare ssh `sudo service ssh restart`
+
+- Pour créer une clé d'accès dans un dossier personnel
+    > ssh-keygen -t ed25519 -C "bakayokoadama507@gmail.com" -f ~/ssh/kooalapp : Sur ma machine hôte, `ed25519` type de clé qui évolue avec le temps, `-C` commentaire, `-f` si on veut le sauvegarder quelque part pour par ex avoir plusieurs clés
+        > Passephrase : Permet de sécurisé la clé
+        > cat .ssh/kooalapp.pub : Pour voir le contenu de la clé publique, ensuite le communiqué au serveur ou github pour lui dire d'accepter la connexion
+
+    > ssh-copy-id -i ~/ssh/kooalapp.pub username@domaine.com : Pour copier la clé sur le serveur distant
+        > i : Permet de choisir la clé qu'on veut copier ensuite l'adresse ssh de notre serveur
+
+    > Se connecter au serveur en lui indiquant la clé a utiliser
+        > ssh -i ~/ssh/kooalapp.pub username@domaine.com : `i` permet de choisir la clé qu'on veut copier en lui donnant ma clé privé
+
+- Pour créer un fichier de configuration pour gérer nos clé ssh
+    > code ~/ssh/config : Créer un fichier `config`, pour se connecter on fait juste `ssh nomHost` nom du Host dans config, voir l'image `Ssh Config.png`
+    > config
+        ```conf
+        Host kooalapp
+            HostName bojo2607.odns.fr  ;Nom d'hôte du serveur
+            User bojo2607   ;Nom d'utilisateur
+            Port -- On peut le redéfinir s'il est différent du port 22
+            IdentitiesOnly yes : On ne veut utiliser que des clés ssh
+            IdentityFile ~/ssh/kooalapp -- Le chemin vers notre fichier d'identité
+            AddkeysToAgent yes : Si on ne veut taper la passphrase à tout moment dans ce cas on pêut utiliser un agent de clé qui permet de mettre en mémoire les clés qu'on a ouvertent
+            UseKeychain yes : Si on n'est sur mac ça permet d'utiliser leur système de clé du système d'exploitation pour sauvegarder nos clés
+            IgnoreUnknown UseKeychain,AddkeysToAgent : Pour dire que s'il ne connaît pas l'option qu'il l'ignore
+        ```
+    > Host * : Permet d'avoir une configuration générique pour tous host
+
+- Lorsqu'on fais `ssh-copy-id`, en réalité sur le serveur distant on n'a un fichier `./ssh/authorized_keys` qui contient les clés l'ensemble des clés publiques qui ont accès au serveur
+
+
+## Issues
+
+- `WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!` : Indique que la clé du serveur ssh a changé depuis la dernière connexion
+    > Ssh garde en cache les empreintes de clés publiques des serveurs dans un fichier `known_hosts`, si la clé change, ssh nous averti pour éviter les attaques `man-in-the-middle`
+    > Le problème `Offending ed25519 key in C:\Users\ADAMO/.ssh/known_hosts:4 Host key for [127.0.0.1]:2222 has changed` - Indique que la ligne 4 du fichier known_hosts correspond à mon serveur sur 127.0.0.1:2222, la clé ed25519 est différente de celle que mon client ssh connaissait
+    > Solution sécurisée
+        > Supprimer la ligne corresponde à notre domaine dans le fichier known_hosts - ssh-keygen -R "[127.0.0.1]:2222"
+        > Éditer le fichier known_hosts manuellement et suppimer la ligne correspondante
+        > Ignorer la vérification strict ssh non recommandée pour la production - ssh -o StrictHostKeyChecking=no -p 2222 user@127.0.0.1

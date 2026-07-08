@@ -1,0 +1,259 @@
+### Hébergeur
+
+- On a 4 offres principales :
+    > `Hebergement mutualisé`
+        Avantages : Coût abordable, Pas de compétence, Pas de compétence technique nécéssaire, Restriction sur la configuration technique du serveur
+        Inconvenients : Plusieurs centaines de sites sur le serveur, Pas suffisant pour un site a fort tarif
+    > `Hebergement dédié virtuel(VPS)`
+        Avantages : Coût relativement abordable, Configuration plus couverte
+        Inconvenients : Quelques sites seulement sur le serveur
+    > `Hebergement dédié`
+        Avantages : Serveur uniquement dédié a votre site, Adapté pour un site à très fort tarif
+        Inconvenients : Coût très important, Nécessite souvant des compétences d'administration réseaux
+    > `Hebergement cloud`
+        Avantages : Offres adaptable à l'évolution du trafic du site, Nombreux services préparés pour facilité le delpoiment
+        Inconvenients : La gestion reste relativement complexe, Généralement peu adapté aux sites à bas trafic
+
+- `OVH` : Vérifier si un nom de domaine existe
+- `o2Switch` - `Infomaniak` : Hébergeur web
+
+- **cPanel**
+
+
+
+
+**VPS** - Héberger sur Vps
+- ssh root@.. -i ~/ssh/koala : `-i` pour préciser la clé que vais utiliser
+    > *Pour ne pas utiliser le root, ajouter koala au groupe sudo, ensuite copier les informations ssh que j'ai pour mon utilisateur admin vers koala*
+- cp -R ~/.ssh /home/koala/.ssh : Ici il a automatiquement créer mon dossier koala quand j'ai créer mon utilisateur
+    > *Ensuite faire en sorte que ce nouveau dossier `/home/koala/.ssh` créer appartienent à koala*
+- chown -R koala:koala /home/koala/.ssh : koala:koala nom d'utilisateur:nom du groupe
+    > *Ensuite rendre koala en super admin : usermod -aG sudo koala, ensuite exit root*
+
+- Ensuite je vais sécurisé mon installation en disant qu'on ne peut plus se connecter au serveur en tant que root via ssh `sudo vim /etc/ssh/sshd_config`
+    > PermitRootLogin: no
+    > PasswordAuthentifaction: no : On ne peut pas se connecter à ssh en utilisant un mot de passe
+        > sudo systemctl restart sshd
+
+- *Se connecter au serveur avec l'utilisateur créer : Installer rsync* - *Sur ma machine* : `rsync -avz -e 'ssh -i ~/.ssh/scaleway' ./build/ koala@51.15.90.241:~/koala/`
+- *Sur mon serveur* : `ls - koala` `cd koala` -- vim .env (.env n'est pas versionnée, on vas le créer et ensuite prendre les données en local et les copier dessus)
+
+- **Sécurité ufw** : *On peut avoir un pare-feu côté hébergeur mais certains ont une interface qui permet de gérer le pare-feu physique qu'ils ont chez eux, si on n'a pas ce pare-feu on peut aussi installer un pare-feu logiciel, c'est important car par defaut si on installe certains système de base de données ils sont ouvert en 80 par défaut, donc si on n'a mal configurer on peut l'exposer, donc pour ça on vas utilser un pare-feu, on vas tout bloquer par défaut et on vas définir les règle*
+    > sudo ufw allow "WWW Full"
+    > sudo ufw status verbose : Va nous montrer les ports ouvert
+
+- *Myql : on créer la bd et un user*
+- *Tester si un port est ouvert dépuis une autre machine : telnet monserveur.com 8080; avec nc, nc -zv ..*
+
+
+**Hebergeur**
+- Netlify
+    > Parfait pour les apps Vite, React, Vue, Svelte
+    > Déploiement continu via GitHub, GitLab ou Bitbucket
+    > CDN global intégré
+    > SSL gratuit
+    > Redirections, formulaires, fonctions serverless
+    > Offre gratuite très généreuse
+
+- Vercel - Créer par les auteurs de Next.js
+    > Très rapide, super UX, idéal pour React, Next.js, Vite, Vu
+    > CDN + Serverless API
+    > Gratuite pour projets persos/small teams
+
+- Heroku
+    > Support Node.js, PHP, Python
+    > Git push = déploiement automatique
+    > PostgreSQL, Redis, Workers
+
+- Infomaniak : 🇨🇭 Suisse
+    > Serveurs performants pour Laravel/Symfony
+    > CPanel, Git deploy, SSH
+    > Bases de données, certificat SSL
+    > Payant mais fiable et éco-responsable
+
+- Hostinger - o2switch - PlanetHoster
+    > Mutualisés ou VPS (payants)
+    > PHP natif, MySQL, SSH, Git
+    > Moins automatisé mais bon rapport qualité/prix
+
+- Cloudflare Pages
+    > Déploiement statique ultra rapide sur leur CDN mondial
+    > 100 % gratuit pour usage personnel
+    > SSL intégré, preview, GitHub/GitLab support
+    > Supporte tous les frameworks JS
+
+- Render : Sites Static
+    > Propose un hébergement statique + backend Node/PHP/Postgres
+    > Intégration Git, auto-deploy
+    > Utilisable pour front + API sur la même plateforme
+
+- Firebase Hosting : Par Google
+    > Très rapide, intégration avec Firestore et fonctions serverless
+    > Idéal pour les apps front avec base de données temps réel
+    > Auth, Analytics, CDN intégrés
+
+- Railway
+    > Très simple à configurer
+    > Support de backend Node, Python, Go, PHP (expérimental)
+    > PostgreSQL, Redis, Cron jobs intégrés
+    > Déploiement Git, prévisualisations
+    > Plan gratuit généreux
+
+- Deta Space : Petit projet
+    > Node.js, Python
+    > Déploiement instantané via CLI
+    > Très limité mais gratuit
+    > Parfait pour micro-API ou test rapide
+    > Pour PHP uniquement (Symfony, Laravel…)
+
+- AlwaysData
+    > Spécialisé en PHP
+    > PostgreSQL, MySQL, FTP, SSH, Git deploy
+    > Domaine custom, certificat SSL automatique
+    > Interface claire
+    > Offre gratuite limitée (1 app, 100 Mo)
+
+- `Gratuit`
+    - 000webhost : PHP, MySQL, FTP, cPanel, SSL gratuit - 300 Mo d’espace disque - 1 site gratuit - Pub sur le site parfois - Bon pour les petits projets
+    - InfinityFree : PHP, MySQL, FTP, SSL, cPanel - Espace disque illimité - Pas de pub, pas de limite de bande passante - Pas de support pour l’envoi d’emails (mail() bloqué)
+    - AwardSpace : PHP, MySQL, 1 Go d’espace - 1 base de données gratuite - Un peu limité mais fiable
+    - FreeHostingNoAds : PHP, MySQL, FTP, sans pub - 1 Go d’espace - 5 Go de trafic mensuel - Interface simple, pas de pub
+    - ByetHost : PHP, MySQL, FTP, cPanel - 1 Go d’espace, 5 bases de données - Bande passante illimitée
+
+- `Local pour tester`
+    - XAMPP (Windows, Linux, macOS)
+    - Laragon (très léger, Windows)
+    - MAMP (macOS et Windows)
+
+
+**Performences**
+- Outils pour mesurer les performances
+    > Google PageSpeed Insights `https://pagespeed.web.dev`- Donne une note sur 100 (mobile & desktop) - Analyse vitesse de chargement, taille des ressources ..
+    > Lighthouse via Chrome DevTools - Audite performance, accessibilité, SEO, PWA, bonnes pratiques - Inspecteur - Lighthouse
+    > GTmetrix `https://gtmetrix.com` - Analyse le temps de chargement, les requêtes HTTP, les tailles de fichier
+    > WebPageTest `https://www.webpagetest.org` - Permet de simuler différents navigateurs, pays, connexions
+
+- Indicateurs clés (KPI) à suivre
+    > Time to First Byte (TTFB) Temps entre la requête et la première réponse du serveur
+    > First Contentful Paint (FCP) Temps pour afficher le premier élément visible
+    > Largest Contentful Paint (LCP) Temps pour afficher l’élément principal
+    > Time to Interactive (TTI) Temps nécessaire pour que la page soit complètement interactive
+    > Cumulative Layout Shift (CLS) Stabilité visuelle pendant le chargement
+    > Total Blocking Time (TBT) Temps où le navigateur est bloqué (par JS, etc.)
+    > Nombre de requêtes HTTP Moins il y en a, mieux c’est (en général)
+    > Poids total de la page Idéalement < 2 Mo pour de bonnes performances
+
+- Suivi dans le temps
+    > Google Analytics - Pour observer les taux de rebond, le temps moyen de chargement
+    > Google Search Console - Performance SEO, vitesse mobile, erreurs d’exploration
+
+- Autres optimisations
+    > Compresser les images (WebP, JPEG optimisé)
+    > Activer la mise en cache (browser & serveur)
+    > CDN, Content Delivry Network (Cloudnary, BunnyCDN, Google cloud Storage)
+    > Technologie Backend (gzip, HTTP/2)
+    > Objet Storage (Google cloud storage, Azure Stokage Blob)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Un **VPS (Virtual Private Server)**, c’est un peu comme **avoir ton propre mini-serveur dédié… à l’intérieur d’un gros serveur partagé**.
+
+Imagine un **immeuble** 🏢 :
+
+* Le **serveur physique** = l’immeuble entier
+* Les **VPS** = les appartements
+* Chaque locataire (utilisateur) a **son espace privé**, même si tout le monde est dans le même bâtiment
+
+---
+
+## 🔧 Concrètement, c’est quoi ?
+
+Un VPS est une **machine virtuelle** créée sur un serveur physique grâce à la **virtualisation**.
+
+Ça te donne :
+
+* 💾 **Ton propre espace disque**
+* 🧠 **Ta propre RAM**
+* ⚙️ **Ton propre CPU (partagé mais réservé en partie)**
+* 🖥️ **Ton propre système d’exploitation** (Linux ou Windows)
+* 🔐 **Accès administrateur (root)**
+
+Donc tu peux installer ce que tu veux comme si c’était un vrai serveur dédié.
+
+---
+
+## 🧠 Différence avec un hébergement classique
+
+| Hébergement mutualisé              | VPS                               |
+| ---------------------------------- | --------------------------------- |
+| Ressources partagées sans contrôle | Ressources isolées pour toi       |
+| Peu de configuration possible      | Contrôle total                    |
+| Simple mais limité                 | Plus puissant mais plus technique |
+
+En mutualisé, si un site voisin consomme tout, ton site ralentit.
+En VPS, **tes ressources sont réservées**.
+
+---
+
+## 🚀 À quoi sert un VPS ?
+
+Tu peux utiliser un VPS pour :
+
+* Héberger un site web (Symfony, WordPress, Laravel…)
+* Lancer une API
+* Héberger une base de données
+* Créer un serveur de jeu
+* Faire tourner un bot Discord
+* Stocker des fichiers
+* Héberger plusieurs projets en même temps
+
+C’est très utilisé par les développeurs parce que tu as **la liberté d’un vrai serveur** sans payer le prix d’un serveur dédié.
+
+---
+
+## 🧩 Comment ça fonctionne techniquement ?
+
+Un logiciel appelé **hyperviseur** découpe le serveur physique en plusieurs serveurs virtuels.
+
+Chaque VPS :
+
+* a son propre système
+* redémarre indépendamment
+* peut planter sans affecter les autres
+
+---
+
+## 💰 Pourquoi c’est populaire ?
+
+Parce que c’est le **meilleur équilibre** entre :
+
+* 🪙 Prix abordable
+* ⚙️ Contrôle avancé
+* 🚀 Bonnes performances
+
+---
+
+## 📌 Résumé simple
+
+> Un VPS, c’est **ton serveur perso virtuel**, avec liberté totale, mais qui partage discrètement le matériel avec d’autres.
+
+---
+
+Si tu veux, je peux aussi t’expliquer :
+
+* comment se connecter à un VPS
+* ou comment déployer un projet Symfony dessus

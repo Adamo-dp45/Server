@@ -1,0 +1,405 @@
+### Bind9 - Serveur DNS - Permet de gérer la résolution des noms de domaine - bind9.readthedocs.io
+
+- Le principe du `DNS` Domain Name System est de transformer les noms de domaine lisibles `www.google.com` en adresses ip `142.250.184.110` pour que les ordinateurs puissent communiquer
+    > Quand on tape une url dans le navigateur
+        > Le navigateur demande à notre système de résoudre le nom
+        > Le système interroge un serveur DNS
+        > Le serveur DNS lui répond avec l’adresse ip correspondante
+
+- Pour tester les noms de domaine on n'avait modifier le fichier `hosts` de notre machine hôte sauf que c'est quelque chose de manuel et temporaire, l'idéal est d'avoir un serveur DNS qui va nous permettre d'acceder à notre site web qui se trouve sur un autre serveur
+
+- sudo apt-get install bind9 bind9utils bind9-doc bind9-dnsutils
+
+- Configuration `/etc/bind`
+    > vim named.conf.local : Pour déclarer notre zone `monsite.fr`
+        ```conf
+        zone "monsite.fr" {
+            type master; -- Indique que le serveur dns est l'autorité principale pour cette zone
+            file "/etc/bind/zones/monsite.fr";
+        };
+        zone "1.168.192.in-addr.arpa" { # La zone inversé, on fais la recherche à partir de l'ip
+            type master; -- '1.168.192' adresse ip du serveur web
+            file "/etc/bind/zones/db.192";
+        };
+        ```
+    > vim /etc/bind/zones/monsite.fr : On indique la configuration du noms de domaine
+        ```conf
+        $TTL 86400
+        @       IN      SOA     ns1.monsite.fr. admin.monsite.fr. (
+                                2024111101 ; Le numéro de version de la zone
+                                3600       ; Le temps d'attente pour rafraichir des serveurs esclaves - 1h
+                                1800       ; Le temps d'attente pour les nouvelles tentatives en cas d'échec - 30m
+                                604800     ; Le temps d'expiration - 7j
+                                86400      ; La durée minimum de vie des données de la zone en cache pour les autres serveurs - 1j
+        )
+        ; --- Nameservers --- ;
+        @       IN      NS      ns1.monsite.fr. ; Nom du serveur dns primaire
+        @       IN      NS      ns2.monsite.fr.
+        ; --- Serveurs DNS --- ;
+        ns1     IN      A       192.168.1.10    ; Ip serveur DNS principal
+        ns2     IN      A       192.168.1.11    ; Ip serveur DNS secondaire `optionnel`
+        ; --- Enregistrements principaux --- ;
+        @       IN      A       203.0.113.10    ; Ip de mon site web
+        www     IN      CNAME   @
+        ; --- Email - SMTP --- ;
+        @       IN      MX 10   mail.monsite.fr.
+        mail    IN      A       203.0.113.10
+        smtp    IN      CNAME   mail
+        imap    IN      CNAME   mail
+        ; --- Services optionnels --- ;
+        ftp     IN      A       203.0.113.10
+        api     IN      A       203.0.113.10
+        ; --- TXT --- ;
+        @       IN      TXT "v=spf1 a mx ~all"
+        ```
+    > vim /etc/bind/zones/db.192
+        ```conf
+        ; !!! - La configuration et on change après le 'Nameservers'
+        10  IN  PTR ns1.monsite.fr.
+        11  IN  PTR ns2.monsite.fr.
+        20  IN  PTR mail.example.com.
+        ```
+    > sudo named-checkzone monsite.fr /etc/bind/zones/db.monsite.fr : Pour vérifier la zone aussi pour le fichier de zone inverse et doit donner `OK` puis
+        > sudo named-checkconf
+    > sudo systemctl restart bind9
+    > Si on utilise `ufw` on ouvre le port DNS dans le firewall
+        > sudo ufw allow 53
+        > sudo ufw allow 53/udp
+    > Configurer notre registrar chez le fournisseur de domaine `OVH`,`IONOS`,`Cloudflare` ou `Namecheap` et configurer les `nameservers personnalisés`
+        > ns1.monsite.fr → 192.168.1.10 : Notre ip publique
+        > ns2.monsite.fr → 192.168.1.11 : Optionnel mais recommandé
+    > Ensuite crée les `glue records`
+        > ns1.monsite.fr = L'ip du dns
+        > ns2.monsite.fr = L'ip du dns
+    > Pour tester depuis l’extérieur
+        > dig @ns1.monsite.fr monsite.fr A : Résolution A
+        > dig monsite.fr NS : Résolution NS
+        > dig monsite.fr SOA : Checker le SOA
+
+
+- Pour acceder à partir du navigateur on vas configurer le serveur dns au niveau de notre machine - Dans les paramètres Ethernet - Modifier les options de partage avancées - Modifier les paramètres de la carte - Ethernet - propriétés - Protocol internet version (TCP/IPv4) - serveurs dns préféré - 192.168.30.252
+
+- Pour configurer les options globale `/etc/bind/named.conf.options`
+- La configuration principal `/etc/bind/named.conf`
+- Les fichiers de zones DNS `/etc/bind/zones`
+
+- Pour activer le serveur en mode `authoritative`
+    > vim /etc/bind/named.conf.
+        ```conf
+        options {
+            directory "/var/cache/bind";
+
+            recursion no; -- Désactiver le mode récursif est important pour la sécurité
+            allow-query {
+                any; -- le monde peut faire des requêtes
+            };
+            dnssec-validation auto;
+            listen-on-v6 {
+                any;
+            };
+        };
+        ```
+    > sudo systemctl restart bind9
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Excellent travail 👏 — ta configuration **Bind9** est déjà bien structurée et claire.
+Je vais la **corriger**, **compléter**, et **expliquer chaque partie** pour que ton serveur DNS soit **propre, sécurisé et fonctionnel**.
+
+---
+
+## 🌐 1. Rappel du principe général
+
+Tu as bien résumé :
+➡️ Le **DNS (Domain Name System)** traduit les **noms de domaine** (lisibles par l’humain) en **adresses IP** (comprises par les machines).
+➡️ BIND9 (Berkeley Internet Name Domain) est un **serveur DNS complet** qui peut être :
+
+* **Master (primaire)** : il détient les fichiers de zones originaux.
+* **Slave (secondaire)** : il réplique les données du master.
+* **Caching / Resolver** : il sert à résoudre les domaines publics (mode récursif).
+
+---
+
+## 📁 2. Arborescence à adopter
+
+```bash
+/etc/bind/
+├── named.conf
+├── named.conf.options
+├── named.conf.local
+└── zones/
+    ├── db.monsite.fr
+    └── db.192
+```
+
+---
+
+## ⚙️ 3. Fichier `/etc/bind/named.conf.local`
+
+✅ **Version corrigée et commentée :**
+
+```conf
+zone "monsite.fr" {
+    type master;                           // Serveur maître (auteur de la zone)
+    file "/etc/bind/zones/db.monsite.fr";  // Fichier de zone directe
+};
+
+zone "1.168.192.in-addr.arpa" {
+    type master;                           // Zone de résolution inverse
+    file "/etc/bind/zones/db.192";         // Fichier de zone inverse
+};
+```
+
+🟢 **Remarques :**
+
+* Les `--` sont à remplacer par `;` (car `--` n’est pas un commentaire valide en syntaxe BIND).
+* Toujours nommer le fichier de zone avec le préfixe `db.` (par convention).
+* L’adresse du reverse doit correspondre à ton réseau réel (ici `192.168.1.0/24` → donc `1.168.192.in-addr.arpa`).
+
+---
+
+## 📄 4. Fichier `/etc/bind/zones/db.monsite.fr`
+
+✅ **Version corrigée et commentée :**
+
+```conf
+$TTL 86400
+@   IN  SOA ns1.monsite.fr. admin.monsite.fr. (
+        2024111101 ; Serial - changer à chaque modification
+        3600       ; Refresh
+        1800       ; Retry
+        604800     ; Expire
+        86400      ; Minimum TTL
+)
+
+; === Serveurs de noms ===
+@       IN  NS  ns1.monsite.fr.
+@       IN  NS  ns2.monsite.fr.
+
+; === Serveurs DNS ===
+ns1     IN  A   192.168.1.10
+ns2     IN  A   192.168.1.11
+
+; === Hôte principal ===
+@       IN  A   203.0.113.10
+www     IN  CNAME   @
+
+; === Mail ===
+@       IN  MX 10 mail.monsite.fr.
+mail    IN  A   203.0.113.10
+smtp    IN  CNAME   mail
+imap    IN  CNAME   mail
+
+; === Autres services ===
+ftp     IN  A   203.0.113.10
+api     IN  A   203.0.113.10
+
+; === Enregistrements TXT ===
+@       IN  TXT "v=spf1 a mx ~all"
+```
+
+🟢 **Remarques :**
+
+* Le point final `.` à la fin des noms de domaine (`ns1.monsite.fr.`) est **obligatoire**, sinon BIND l’interprète comme `ns1.monsite.fr.monsite.fr.` ❌
+* Les IP `203.0.113.10` sont des IP d’exemple (remplace par la tienne).
+* Tu peux ajouter un champ `AAAA` pour l’IPv6 si ton serveur en a une.
+
+---
+
+## 🔄 5. Fichier `/etc/bind/zones/db.192` (zone inverse)
+
+✅ **Version corrigée et commentée :**
+
+```conf
+$TTL 86400
+@   IN  SOA ns1.monsite.fr. admin.monsite.fr. (
+        2024111101
+        3600
+        1800
+        604800
+        86400
+)
+
+; === Serveurs de noms ===
+@   IN  NS  ns1.monsite.fr.
+@   IN  NS  ns2.monsite.fr.
+
+; === Résolution inverse ===
+10  IN  PTR ns1.monsite.fr.
+11  IN  PTR ns2.monsite.fr.
+20  IN  PTR mail.monsite.fr.
+```
+
+🟢 **Remarques :**
+
+* L’adresse IP complète de `192.168.1.10` se traduit en `10.1.168.192.in-addr.arpa`.
+* Il faut donc écrire seulement `10 IN PTR ...` car le préfixe est déjà défini dans la déclaration de zone.
+* `mail.example.com.` → corriger en `mail.monsite.fr.`
+
+---
+
+## ⚙️ 6. Fichier `/etc/bind/named.conf.options`
+
+✅ **Version corrigée :**
+
+```conf
+options {
+    directory "/var/cache/bind";
+
+    recursion no;               // Pas de récursion : DNS autoritatif seulement
+    allow-query { any; };       // Accepter toutes les requêtes (à restreindre si besoin)
+    dnssec-validation auto;     // Active la validation DNSSEC
+
+    listen-on { any; };         // Écoute sur toutes les interfaces IPv4
+    listen-on-v6 { any; };      // Écoute sur toutes les interfaces IPv6
+};
+```
+
+🟢 **Remarques :**
+
+* `recursion no` est essentiel pour éviter qu’un DNS public soit exploité en **amplification DDoS**.
+* Si ton DNS n’est que pour ton LAN, tu peux remplacer `allow-query { any; };` par :
+
+  ```conf
+  allow-query { 192.168.1.0/24; localhost; };
+  ```
+
+---
+
+## 🧩 7. Vérifications et commandes utiles
+
+### ✅ Vérifier la syntaxe
+
+```bash
+sudo named-checkconf
+sudo named-checkzone monsite.fr /etc/bind/zones/db.monsite.fr
+sudo named-checkzone 1.168.192.in-addr.arpa /etc/bind/zones/db.192
+```
+
+### 🚀 Redémarrer le service
+
+```bash
+sudo systemctl restart bind9
+sudo systemctl status bind9
+```
+
+### 🔍 Tester les requêtes
+
+```bash
+dig @192.168.1.10 monsite.fr
+dig @192.168.1.10 www.monsite.fr
+dig @192.168.1.10 monsite.fr MX
+dig @192.168.1.10 -x 192.168.1.10
+```
+
+---
+
+## 🔐 8. Ouverture du port DNS
+
+```bash
+sudo ufw allow 53
+sudo ufw allow 53/udp
+sudo ufw reload
+```
+
+---
+
+## 🌍 9. Liaison avec ton registrar (OVH, Ionos, etc.)
+
+Dans le **panneau DNS de ton domaine**, tu dois :
+
+1. Créer des **glue records** :
+
+   ```
+   ns1.monsite.fr → ton_IP_publique
+   ns2.monsite.fr → ton_IP_publique_secondaire
+   ```
+2. Définir les **nameservers personnalisés** :
+
+   ```
+   ns1.monsite.fr
+   ns2.monsite.fr
+   ```
+
+---
+
+## 💡 10. Accès local (machine cliente)
+
+Dans ta machine Windows/Linux :
+
+* DNS préféré → `192.168.1.10`
+* DNS secondaire → `192.168.1.11`
+
+Ensuite, `ping monsite.fr` devrait répondre avec ton IP publique.
+
+---
+
+Souhaites-tu que je t’ajoute **une configuration complète “DNS maître + esclave”** (avec transfert automatique de zone et vérification TSIG) ?
+C’est très utile si tu veux un **ns1 + ns2** réellement fonctionnels et synchronisés.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ✅ 10. Erreurs fréquentes (et comment les éviter)
+
+| Problème                              | Cause                        | Solution                                               |
+| ------------------------------------- | ---------------------------- | ------------------------------------------------------ |
+| Le domaine ne marche pas              | Glue records non créés       | Ajoute ns1 + IP chez ton registrar                     |
+| BIND refuse de démarrer               | Mauvais serial               | Augmente le numéro                                     |
+| Les modifications ne s’appliquent pas | Cache DNS                    | Attendre 1h ou réduire le TTL                          |
+| Le DNS répond lentement               | Firewall bloqué              | Ouvre TCP+UDP port 53                                  |
+| Le DNS secondaire ne suit pas         | Zone non configurée en slave | Configurer `type slave` ou utiliser un service externe |
+
+
+
+
+🔐 4. DNSSEC (Sécurité DNS)
+
+Permet de signer les zones avec des clés cryptographiques.
+
+Garantit que les réponses DNS ne sont pas falsifiées (DNS spoofing).
+
+Active via :
+
+dnssec-validation auto;
+
+Pour signer ta zone :
+
+dnssec-keygen -a RSASHA256 -b 2048 -n ZONE example.com
+dnssec-signzone -A -N INCREMENT -o example.com -t db.example.com
+
+
+
+
+📡 5. Forwarders
+
+BIND peut transférer les requêtes vers d’autres serveurs DNS (Google, Cloudflare) :
+
+forwarders {
+    8.8.8.8;
+    1.1.1.1;
+};

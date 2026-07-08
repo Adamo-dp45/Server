@@ -1,0 +1,612 @@
+### Postfix - Envoyer des emails seulement
+
+- sudo apt-get install postfix : Pendant l'installation on nous demande de choisir le type de configuration 
+    > site internet : Nous permet d'envoyer des email depuis le serveur en utilisant `SMTP` ensuite on nous demande le nom de couriel qu'on va utiliser `adamo.dp45@gmail.com` par ex
+    > internet smarthost : Pour un envoi via un relais `SMTP` externe
+    > satellite system : Pour relayer tous les emails via un serveur externe
+    > local only : Pour emails locaux seulement
+
+- Après installation, on ouvre le fichier de configuration `sudo vim /etc/postfix/main.cf`
+    > myhostname : Nom d'utilisateur de l'hébergeur
+    > myorigin : Domaine utilisé pour les emails sortants, pour changer `vim /etc/mailname`
+    > mydestination : Indique les domaines qui correspondes à cette machine et dans lequel postfix va délivré en local, on doit enlevé notre domaine à cause de la partie reception d'email qui sera gérer d'une manière externe
+    > mynetwork : Permet de gérer les mahines qui pouront être utiliser en relais
+    > inet_interfaces : Indique les address d'interfaces réseau sur lesquels postfix va écouté, pour la sécurité mettre seulement en `loopback-only` notre machine seule pour éviter les problèmes de sécurité
+
+- sudo vim /etc/mailname : Pour changer l'origine
+- sudo dpkg-reconfigure postfix : Permet de reconfigurer avec le panneau intéractive qui s'affiche lors de l'installation
+- sudo service postfix restart : Redémarrer postfix
+
+- Si notre fournisseur d'accès à internet bloque les emails sortants, il faudra désactiver le blocage `SMTP` sur notre hébergeur
+
+- sudo apt-get install mailutils : Une collection de plein de truc qui permet de gérer les emails
+    > mail --help
+- echo "contenu" | mail -s "Sujet du mail" demo@gmail.com : Pour envoyer un mail
+
+- Pour la partie optimisation et si on veut éviter le spam, il faut configurer le `DDNS`, `DKIM`, `SPF`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Parfait 😄 — Postfix est un serveur de messagerie (MTA : Mail Transfer Agent) très utilisé sous Linux pour envoyer et recevoir des emails. Voici un guide complet pour son installation et son utilisation sur un serveur
+
+
+
+Les logs se trouvent généralement dans /var/log/mail.log (Debian) ou /var/log/maillog (CentOS).
+/etc/postfix/main.cf : configuration principale
+/etc/postfix/master.cf : configuration des services et ports
+
+
+
+
+
+
+
+
+
+Exemple /etc/postfix/main.cf minimal :
+
+myhostname = mail.example.com
+mydomain = example.com
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
+relayhost =
+mynetworks = 127.0.0.0/8
+inet_interfaces = all
+inet_protocols = ipv4
+
+myhostname → nom complet du serveur SMTP
+
+mydomain → domaine principal
+
+mydestination → domaines que Postfix accepte pour la livraison locale
+
+mynetworks → IP autorisées à relayer via ton serveur
+
+
+
+
+Avec sendmail :
+
+echo -e "Subject: Test\n\nBonjour depuis Postfix" | sendmail destinataire@example.com
+
+Vérifier les logs :
+
+tail -f /var/log/mail.log
+
+
+---
+
+5️⃣ Relais SMTP (smarthost)
+
+Pour envoyer tous les mails via un serveur externe (ex : Gmail) :
+
+1. Modifier main.cf :
+
+
+
+relayhost = [smtp.gmail.com]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_tls_security_level = encrypt
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+
+2. Créer /etc/postfix/sasl_passwd :
+
+
+
+[smtp.gmail.com]:587 utilisateur@gmail.com:motdepasse
+
+3. Créer le fichier hash et sécuriser :
+
+
+
+sudo postmap /etc/postfix/sasl_passwd
+sudo chmod 600 /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db
+sudo systemctl restart postfix
+
+
+---
+
+6️⃣ Gérer les utilisateurs et boîtes mail
+
+1. Postfix gère les emails via utilisateurs Linux ou boîtes virtuelles.
+
+
+2. Pour un utilisateur Linux :
+
+
+
+sudo adduser testuser
+
+L’email local sera testuser@localhost ou testuser@example.com selon configuration.
+
+
+3. Pour boîtes virtuelles (plus complexe, avec /etc/postfix/virtual):
+
+
+
+user1@example.com    utilisateur1
+user2@example.com    utilisateur2
+
+Puis :
+
+
+sudo postmap /etc/postfix/virtual
+sudo postfix reload
+
+
+---
+
+7️⃣ Vérifier la queue d’emails
+
+postqueue -p   # voir la file d’attente
+postqueue -f   # tenter de renvoyer les emails en attente
+
+Supprimer un email bloqué :
+
+
+postsuper -d QUEUE_ID
+
+Supprimer tous les emails de la file :
+
+
+postsuper -d ALL
+
+
+---
+
+8️⃣ Tester le serveur SMTP
+
+telnet localhost 25
+
+Tu devrais voir la réponse de Postfix :
+
+
+220 mail.example.com ESMTP Postfix
+
+Commandes SMTP de base pour test :
+
+
+HELO example.com
+MAIL FROM:<test@example.com>
+RCPT TO:<destinataire@example.com>
+DATA
+Subject: Test
+Message de test
+.
+QUIT
+
+
+---
+
+9️⃣ Sécuriser Postfix
+
+1. Activer TLS pour SMTP :
+
+
+
+smtpd_tls_cert_file=/etc/ssl/certs/mail.example.com.crt
+smtpd_tls_key_file=/etc/ssl/private/mail.example.com.key
+smtpd_use_tls=yes
+smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
+
+2. Limiter les relais pour éviter le spam :
+
+
+
+mynetworks = 127.0.0.0/8 [::1]/128
+
+3. Vérifier SPF, DKIM et DMARC pour ton domaine pour que tes mails ne soient pas marqués comme spam.
+
+
+
+
+---
+
+10️⃣ Commandes utiles
+
+Commande Description
+
+sudo systemctl start postfix Démarrer Postfix
+sudo systemctl stop postfix Arrêter
+sudo systemctl restart postfix Redémarrer
+sudo systemctl status postfix Vérifier statut
+postfix reload Recharger configuration
+postqueue -p Voir la file d’attente des mails
+postqueue -f Forcer l’envoi des mails en attente
+postsuper -d QUEUE_ID Supprimer un mail bloqué
+postsuper -d ALL Supprimer tous les mails en file
+mail -s "Sujet" destinataire@domaine.com Envoyer mail simple
+
+
+
+---
+
+11️⃣ Exemple complet
+
+# Installer Postfix
+sudo apt install postfix mailutils
+
+# Configurer pour site Internet, domaine example.com
+sudo nano /etc/postfix/main.cf
+
+# Redémarrer Postfix
+sudo systemctl restart postfix
+
+# Envoyer un email de test
+echo "Message de test" | mail -s "Test Postfix" user@example.com
+
+# Vérifier la file d’attente
+postqueue -p
+
+# Supprimer un email bloqué
+postsuper -d QUEUE_ID
+
+# Activer un relais SMTP (Gmail)
+sudo nano /etc/postfix/main.cf
+sudo nano /etc/postfix/sasl_passwd
+sudo postmap /etc/postfix/sasl_passwd
+sudo systemctl restart postfix
+
+
+---
+
+💡 Astuce :
+Pour un serveur de production, configure toujours TLS, SPF/DKIM, utilisateurs dédiés et restrictions de relais. Postfix est puissant mais doit être sécurisé pour éviter que ton serveur devienne un relais de spam.
+
+
+---
+
+Si tu veux, je peux te faire un tableau récapitulatif complet avec toutes les commandes Postfix et fichiers clés, prêt à imprimer pour référence rapide, incluant envoi, queue, utilisateurs et relais SMTP.
+
+Veux‑tu que je fasse ça ?
+
+
+
+
+
+
+
+
+
+Oui 😄 — Postfix est un MTA (Mail Transfer Agent), mais il existe plusieurs autres serveurs de messagerie qui remplissent le même rôle ou des rôles proches, chacun avec ses forces et faiblesses. Voici les principaux :
+
+
+---
+
+1️⃣ Serveurs MTA classiques (envoi/reception emails)
+
+Serveur Description Points forts Points faibles
+
+Exim MTA très populaire sur Debian/Ubuntu Très configurable, intégré à Debian par défaut Configuration complexe pour débutants
+Sendmail Ancien MTA historique sur Unix Très puissant et flexible Très difficile à configurer, sécurité parfois fragile
+Postfix MTA moderne, sécurisé et rapide Simple à configurer, performant, sécurisé Moins flexible que Sendmail pour certains cas très spécifiques
+Qmail MTA sécurisé et rapide Sécurité historique très solide Moins maintenu, configuration atypique
+
+
+
+---
+
+2️⃣ Serveurs MDA (Mail Delivery Agent)
+
+Ces serveurs reçoivent les emails pour les livrer dans les boîtes utilisateurs (souvent utilisés avec MTA) :
+
+Serveur Description
+
+Dovecot Serveur POP3/IMAP pour récupérer mails
+Courier Serveur POP3/IMAP
+Cyrus Serveur IMAP haut de gamme
+
+
+
+---
+
+3️⃣ Serveurs SMTP pour relais et envoi cloud
+
+Serveur / service Description
+
+Haraka Serveur SMTP en Node.js pour envoi rapide et pluginable
+OpenSMTPD MTA simple et sécurisé, souvent sur OpenBSD
+SendGrid, Mailgun, Amazon SES Services SMTP externes pour envoyer mails sans gérer serveur
+
+
+
+---
+
+4️⃣ Solution complète mail server (MTA + MDA + webmail)
+
+Solution Description
+
+Zimbra Serveur complet : SMTP, IMAP, webmail, calendrier
+iRedMail Installe Postfix + Dovecot + SpamAssassin + Roundcube
+Mailcow Dockerized mail server complet avec Postfix + Dovecot + webmail + gestion utilisateurs
+
+
+
+---
+
+💡 Astuce :
+
+Postfix + Dovecot est la combinaison la plus courante pour un serveur mail complet.
+
+Pour des besoins simples d’envoi uniquement, Postfix ou Exim suffisent.
+
+Pour production, privilégie Postfix ou Exim avec Dovecot pour la récupération et le stockage des emails.
+
+
+
+---
+
+Si tu veux, je peux te faire un tableau comparatif complet de tous les serveurs mail connus, avec installation, rôle, facilité de configuration et usage recommandé, prêt à référence rapide.
+
+Veux‑tu que je fasse ça ?
+
+
+
+
+
+
+
+
+
+Parfait 😄 — Dovecot est un serveur IMAP et POP3 pour Linux, utilisé pour que les utilisateurs puissent récupérer leurs emails stockés sur le serveur. Il s’intègre souvent avec Postfix pour une solution complète MTA+MDA. Voici une utilisation complète de Dovecot sur un serveur Linux.
+
+
+---
+
+📝 Utilisation complète de Dovecot
+
+
+---
+
+1️⃣ Installation
+
+Debian / Ubuntu
+
+sudo apt update
+sudo apt install dovecot-core dovecot-imapd dovecot-pop3d
+
+dovecot-core : composant central
+
+dovecot-imapd : support IMAP
+
+dovecot-pop3d : support POP3
+
+
+CentOS / RHEL
+
+sudo yum install dovecot
+sudo systemctl enable dovecot
+sudo systemctl start dovecot
+
+
+---
+
+2️⃣ Démarrer / arrêter / redémarrer
+
+sudo systemctl start dovecot
+sudo systemctl stop dovecot
+sudo systemctl restart dovecot
+sudo systemctl status dovecot
+
+Activer au démarrage :
+
+
+sudo systemctl enable dovecot
+
+
+---
+
+3️⃣ Fichier de configuration principal
+
+/etc/dovecot/dovecot.conf : config principale
+
+/etc/dovecot/conf.d/10-*.conf : configs modulaires (auth, mail, ssl...)
+
+/etc/dovecot/conf.d/10-mail.conf : config répertoire mails
+
+
+Exemple minimal /etc/dovecot/dovecot.conf :
+
+listen = *
+!include conf.d/*.conf
+
+
+---
+
+4️⃣ Configurer le répertoire mail
+
+Dans /etc/dovecot/conf.d/10-mail.conf :
+
+mail_location = maildir:/var/mail/vhosts/%d/%n
+
+%d → domaine
+
+%n → nom d’utilisateur
+
+Exemple pour un utilisateur user@example.com → /var/mail/vhosts/example.com/user/
+
+
+Créer le répertoire :
+
+sudo mkdir -p /var/mail/vhosts/example.com/user
+sudo chown -R vmail:vmail /var/mail/vhosts
+sudo chmod -R 700 /var/mail/vhosts
+
+Créer utilisateur système ou virtuel vmail pour stocker les mails :
+
+
+sudo groupadd -g 5000 vmail
+sudo useradd -g vmail -u 5000 vmail -d /var/mail/vhosts -m
+
+
+---
+
+5️⃣ Configurer l’authentification
+
+Fichier : /etc/dovecot/conf.d/10-auth.conf
+
+
+disable_plaintext_auth = no   # autoriser auth non-chiffrée (à sécuriser avec SSL)
+auth_mechanisms = plain login
+!include auth-system.conf.ext   # utiliser utilisateurs système
+
+Pour utilisateurs virtuels, utiliser auth-userdb.conf.ext avec MySQL/PostgreSQL
+
+
+
+---
+
+6️⃣ Activer SSL/TLS
+
+Fichier : /etc/dovecot/conf.d/10-ssl.conf
+
+ssl = required
+ssl_cert = </etc/ssl/certs/mail.example.com.crt
+ssl_key = </etc/ssl/private/mail.example.com.key
+
+Redémarrer Dovecot :
+
+
+sudo systemctl restart dovecot
+
+
+---
+
+7️⃣ Vérifier le serveur
+
+Tester IMAP :
+
+
+openssl s_client -connect localhost:993
+
+Tester POP3 :
+
+
+openssl s_client -connect localhost:995
+
+Tester avec un client mail (Thunderbird, Outlook) :
+
+
+IMAP Server: mail.example.com, port 993, SSL/TLS
+Username: user@example.com
+Password: motdepasse
+
+
+---
+
+8️⃣ Intégration avec Postfix
+
+Postfix reçoit les mails et les dépose dans le maildir de l’utilisateur
+
+Exemple /etc/postfix/main.cf :
+
+
+home_mailbox = maildir/
+
+Dovecot lit ensuite ces mails via IMAP/POP3 pour que l’utilisateur puisse les récupérer.
+
+
+
+---
+
+9️⃣ Commandes utiles
+
+Commande Description
+
+sudo systemctl start dovecot Démarrer Dovecot
+sudo systemctl restart dovecot Redémarrer
+sudo systemctl status dovecot Vérifier statut
+dovecot -n Afficher la config actuelle
+doveadm auth test user@example.com Tester l’authentification d’un utilisateur
+doveadm mailbox list -u user@example.com Lister les boîtes mail d’un utilisateur
+doveadm expunge -u user@example.com mailbox INBOX Supprimer mails selon filtre
+
+
+
+---
+
+10️⃣ Gestion des utilisateurs virtuels
+
+Créer fichier /etc/dovecot/users :
+
+
+user@example.com:{PLAIN}motdepasse:5000:5000::/var/mail/vhosts/example.com/user::userdb_mail=maildir:/var/mail/vhosts/example.com/user
+
+Activer :
+
+
+!include auth-passwdfile.conf.ext
+
+Tester :
+
+
+doveadm auth test user@example.com
+
+
+---
+
+11️⃣ Exemple complet
+
+# Installer Dovecot
+sudo apt install dovecot-core dovecot-imapd dovecot-pop3d
+
+# Créer utilisateur vmail
+sudo groupadd -g 5000 vmail
+sudo useradd -g vmail -u 5000 vmail -d /var/mail/vhosts -m
+
+# Créer maildir
+sudo mkdir -p /var/mail/vhosts/example.com/user
+sudo chown -R vmail:vmail /var/mail/vhosts
+sudo chmod -R 700 /var/mail/vhosts
+
+# Config maildir dans 10-mail.conf
+mail_location = maildir:/var/mail/vhosts/%d/%n
+
+# Config auth dans 10-auth.conf
+auth_mechanisms = plain login
+!include auth-system.conf.ext
+
+# SSL/TLS
+ssl = required
+ssl_cert = </etc/ssl/certs/mail.example.com.crt
+ssl_key = </etc/ssl/private/mail.example.com.key
+
+# Redémarrer
+sudo systemctl restart dovecot
+
+# Tester utilisateur
+doveadm auth test user@example.com
+
+
+---
+
+💡 Astuce :
+
+Dovecot fonctionne toujours avec des boîtes mail existantes, souvent déposées par Postfix.
+
+Utilise maildir plutôt que mbox pour une meilleure compatibilité et sécurité.
+
+Pour production, active TLS et utilisateurs virtuels pour chaque domaine.
+
+
+
+---
+
+Si tu veux, je peux te faire un tableau récapitulatif complet Postfix + Dovecot, avec config fichiers, ports, commandes et bonnes pratiques, prêt à référence rapide.
+
+Veux‑tu que je fasse ça ?

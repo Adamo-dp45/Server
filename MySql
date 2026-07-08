@@ -1,0 +1,64 @@
+### Mysql - Base de données
+
+- sudo apt-cache policy mysql-server : Vérifier les dépôts actuels
+    > Si mysql n'est pas disponible dans les dépôts officiels de mon `debian`
+        > wget https://dev.mysql.com/get/mysql-apt-config_0.8.29-1_all.deb : Télécharger le dépôt mysql
+        > sudo dpkg -i mysql-apt-config_0.8.29-1_all.deb : Installer le dépôt et `sudo apt-get update`
+        > sudo apt-get install mysql-server mysql-client -y : Installer mysql server + client et definir le mot de passe root
+- sudo systemctl start mysql : Démarrer mysql `o`
+- sudo systemctl enable mysql : Activer mysql `o`
+
+- sudo mysql_secure_installation : Pour redéfinir la sécurité
+    > Définir un mot de passe
+    > Supprimer les utilisateurs anonymes
+    > Désactiver l'accès root à distance
+    > Supprimer la base de test
+
+- mysql -uroot -proot : Se connecter a mysql mais en tant que root car je l'utilise
+    > SHOW DATABASES; : Pour lister des bases de données existantes
+    > CREATE DATABASE blog; : Créer une bases de données
+- mysql -u root -p -e "SHOW DATABASES;" : Permet d'exécuter une commande sql depuis le terminal
+
+- De mainière générale, on ne veut pas que tous le monde ait un accès root, on voudras créer un utilisateur pour chaque base de données
+    > CREATE USER 'dev'@'localhost' IDENTIFIED BY 'dev'; : Nom utilisateur, on lui donne accès à localhost ensuite son mot de passe
+    > GRANT ALL PRIVILEGES ON blog.* TO 'dev'@'localhost'; : On lui donne tous les privilèges ou accès sur la base de données blog ou `blog.nomtable` pour limiter à certaines tables
+    > FLUSH PRIVILEGES; : Demamnder à mysql de recharger les privilèges
+    > mysql -udev -pdev : On se en tant que dev
+
+    > REVOKE ALL PRIVILEGES ON blog.* FROM 'dev'@'localhost'; : Pour révoquer des privilèges
+    > FLUSH PRIVILEGES;
+    > DROP USER 'dev'@'localhost' : Pour supprimer un utilisateur
+
+- Commandes utiles
+    > DROP DATABASE blog; : Supprimer une base de données
+    > USE blog; : Sélectionner une base de données
+    > SHOW TABLES; : Pour lister les tables d'une base de données
+    > DESCRIBE table; : Pour décrire la structure d’une table
+
+- sudo apt-get install php5-mysql : Le module mysql pour php pour utiliser des outils comme adminer ou phpmyadmin, ensuite redémarer apache
+
+- Configuration `/etc/mysql`
+    > conf.d : Contient différents sous fichiers de configuration
+    > my.cnf : Contient la configuration générale
+        > bind_address : Par défaut il n'écoute qu'en localhost `127.0.0.1`
+        > log_error : Chemin des logs
+        > slow_query_log_file : Le fichier de log qui va contenir les requêtes trop longues, utile pour la performence `a`
+        > slow_query_log = 1 : Pour activer le log `a` pour de la performence
+        > long_query_time = 2 : Le temps qui définie si la requête est lente en `seconde`
+    > sudo service restart mysql
+    > tail -n 30 /var/log/mysql/error.log : Pour les logs d'erreurs
+    > tail -n 30 /var/log/mysql/mysql-slow.log : Pour les erreurs de requête lente
+
+- Pour avoir une interface visuel qui permet de gérer la base de données, on n'a des outils comme `phpmyadmin` ou `adminer`
+
+- Pour importer ou exporter nos informations si on n'a besoin de sauvegarder notre base de données `recommandé en cli`
+    > Import - `mysql -u root -p tuto < dump.sql;` : `<` pour l'avoir dans un fichier ensuite on entre le mot de passe
+    > Export - `mysqldump -u root -p posts > dump.sql` : `>` pour l'avoir dans un fichier ensuite on entre le mot de passe
+
+
+## MariaDB - Base de données et est un fork de Mysql
+
+- sudo apt install mariadb-server mariadb-client -y : Installer
+    > sudo systemctl status mariadb: Pour voir le status
+- mariadb -udev -p : Se connecter à travers le cli
+- sudo mysql_secure_installation : Pour définir un mot de passe root et sécuriser MariaDB

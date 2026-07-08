@@ -1,0 +1,521 @@
+### Nginx : Serveur HTTP ultra-performant - nginx.org
+
+- Serveur web permettant de gérer un trafic très important plus simplement que apache
+    > sudo apt-search nginx : Pour vérifier si il existe dans la liste des dépots
+    > sudo apt install nginx -y : Installer nginx `nginx -v`
+    > sudo systemctl status nginx : Vérifier que le service est actif
+    > sudo systemctl enable nginx && sudo systemctl start nginx : Pour activer et démarrer nginx
+        > Vérifier dans le navigateur - `localhost`
+        > Gérer le pare-feu si Ufw est activé - `sudo ufw allow 'Nginx Full'`
+    > sudo systemctl stop nginx : Pour arrêter
+
+- Par défaut nginx écoute sur le port 80 pour `http` et 443 `https` - Pour avoir la version la plus récente on peut aller dans la liste des dépots de nginx sur nginx.org et on suit les étapes selon notre système d'exploitation et on pourra installer nginx depuis les packages nginx.org plutôt que ceux de `debian`
+
+- Pour utiliser `Apache` et `Nginx` sur le même serveur, on doit changer le port de l'un d'entre eux ou en désactivé un
+    > Apache `sudo nano /etc/apache2/ports.conf` et changer le port dans `Listen`, puis redémarrer apache
+
+- Configuration `/etc/nginx`
+    > vim nginx.conf
+        > user : L'utilisateur qui correspond à nginx, lorsque les processus nginx sont lancé il le sont avec cet utilisateur, ici `www-data`
+        > worker_processes : Nombre de proccess qui peuvent être alloué pour les serveurs virtuels
+        > error_log : Fichier d'erreur
+        > http - include : Inclus tous les fichiers qui sont dans le dossier `conf.d`
+            > Si on fais une installation en utilisant les packages de `debian` on aura dans notre configuration en plus du dossier `conf.d` - `sites-enabled` - `sites-available`
+                > sites-available : On vas placer tous les fichiers de configuration et lorsqu'on vas les activés on vas faire un lien symboliques depuis `sites-enabled`
+                > sites-available/default - root : Contient les liens symboliques vers les configuration activées
+                > conf.d : Configuration additionnelle, souvent pour module ou SSL
+            > Si on le fais avec les packages de `nginx` tous les fichiers de configurations seront dans `conf.d`
+                > `conf.d/default.conf` ou `sites-available/default.conf` : Dans ce fichier on n'a une propriété `server` qui permet de définir un nouveau serveur virtuel et à l'intérieur on vas avoir ses propriétés
+                    > listen: 80 : Port sur lequel il écoute
+                    > server_name: localhost : Sert lorsqu'on utilise les noms de domaines par défaut
+                    > location: / : Url de redirection, que doit faire le serveur lorsqu'on se connecte dessus
+                        > root : Racine de notre serveur, `/home/dev/www` pour pointer vers notre site lorsqu'on tape l'ip de notre machine sur un navigateur
+                        > index : Si on ne précise rien dans l'url, il ira chercher les fichiers définis ici
+                    > location = /50x.html : Directive pour les erreurs
+            > sudo nginx -t : Pour tester la configuration
+            > sudo service nginx restart : Redémarrer nginx après configuration
+        > En général on ne vas pas tapé l'ip de notre machine mais on vas passer par un nom de domaine, en local on vas le faire en modifiant le fichier `C:\Windows\System32\drivers\etc\hosts` de notre machine
+            > hosts
+                > 127.0.0.1 monsite.fr
+                > 127.0.0.1 www.monsite.fr
+            > On remet la configuration du `root` à sa place et on vas créer un `virtualHost` pour gérer notre nom de domaine
+                > cd `/etc/nginx/conf.d` ou `/etc/nginx/sites-available` si on a fais une installation à la debian et ensuite activer le site après configuration, pour le fichier on peut omettre `.conf`
+                    > vim monsite.conf
+                    ```conf
+                        server {
+                            listen 80;
+                            server_name monsite.fr; -- 'www.monsite.fr' on peut mettre la version www à côté mais ne redirige pas sur la version sans www dans le navigateur donc on crée un nouveau server
+                            root /home/dev/www;
+                            index index.html index.php;
+
+                            error_log /home/dev/logs/error.log;
+                            access_log /home/dev/logs/access.log; -- On peut avoir des logs pour les accès à notre site
+
+                            location ~ /\. {
+                                deny all; -- On bloque l'accès
+                                access_log off; -- On n'enregistre pas dans les logs
+                                log_not_found off; -- Si j'essai d'acceder à un point qui n'existe pas ce n'est pas grave
+                            }; -- '=' signifie que l'url demandé corresponde, '~' signifie que je vais écrie un regex pour qu'il le match
+
+                            rewrite ^/logo$ /img/logo.png last; -- 'last' lorsqu'on rencontre cette règle on s'arrête, 'break', 'redirect' redirige avec un code 302
+
+                            location / {
+                                autoindex on; -- Pour activer un listing qui permet de voir le contenu de nos dossiers, en général on ne vas pas le mettre mais il peut être utile pour le debug
+                                try_files $uri $uri/ $uri.html = 404;
+                                # try_files $uri $uri/ /index.php$is_args$args; -- Ou '?$query_string'
+                            }; -- Condition pour du rewrite pour un fichier ou un dossier, 'try_files..' par défaut tu va essayer d'acceder au fichier qui est demandé, si tu ne le trouve pas accède au dossier demander et si tu ne le trouve pas tu prend l'url et tu rajoute .html et si tu ne trouve renvoi une page d'erreur 404, va détecter le 404 de error_page et renvoyer la page 404 sinon il va boucler
+
+                            error_page 404 500 501 /404.html; -- Pour afficher une page d'erreur pour le serveur, mais ne pas oublié de créer le fichier
+
+                            # -- Envoi des requêtes php à php-fpm
+                            location ~* \.php$ {
+                                try_files $uri = 404; -- Essaie de trouver le fichier sinon 404
+                                fastcgi_pass unix:/run/php/php8.2-fpm.sock; -- Indique l'adresse du serveur fastcgi, on peut mettre une adresse ip (127.0.0.1:9000) ou un socket qui est est plus rapide et plus sécurisé
+                                fastcgi_index index.php; -- Lorsqu'il ne sait pas quel fichier charger il utilse index.php
+                                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; -- On lui indique le nom du paramètre, le fichier à charger qu'on vient de charger
+                                include fastcgi_params; -- On inclus les autres paramètres
+
+                                # -- Version moderne et contient les précédents et plus
+                                # include snippets/fastcgi-php.conf; -- Configuration standard FastCGI
+                                # fastcgi_pass unix:/run/php/php8.4-fpm.sock; -- Pour passer les requêtes php à php-fpm
+                            }
+
+                            # -- Empêcher l’accès aux fichiers sensibles comme ceux qui commençe par '.'
+                            location ~ /\. {
+                                deny all;
+                            }
+
+                            # -- Timeout plus stricts
+                            client_max_body_size 10M;
+                            client_body_timeout 15s;
+                            keepalive_timeout 30s;
+
+                            # -- Cache navigateur pour les fichiers statiques
+                            location ~* \.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|svg|woff2?)$ {
+                                expires 30d; -- 6M
+                                access_log off;
+                                add_header Cache-Control "public, no-transform";
+                            }
+
+                            # add_header X-Frame-Options "SAMEORIGIN"; -- Headers de sécurité
+                            # add_header X-Content-Type-Options "nosniff"; --
+                            # add_header Referrer-Policy "strict-origin-when-cross-origin"; --
+                            # add_header Permissions-Policy "geolocation=(), microphone=(), camera=()"; --
+
+                            # gzip on; -- Compression Gzip
+                            # gzip_disable "msie6";
+                            # gzip_vary on;
+                            # gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
+
+                            # ssl_certificate /etc/letsencrypt/live/monsite.com/fullchain.pem; -- Certificats ssl
+                            # ssl_certificate_key /etc/letsencrypt/live/monsite.com/privkey.pem;
+                            # ssl_protocols TLSv1.2 TLSv1.3;
+                            # ssl_ciphers HIGH:!aNULL:!MD5;
+                        }
+
+                        server {
+                            listen 80;
+                            server_name www.monsite.fr;
+                            return 301 http://monsite.fr$request_uri; -- $request_uri est une variable qui contient la requête qui a été faite
+                        }
+                    ```
+    > sudo nginx -t : Pour tester la configuration, il pourrait être le fait que le dossier `logs` n'existe pas donc on l'a crée et on redémarre nginx
+        > sudo service nginx restart : Pour qu'il prenne en compte la nouvelle configuration
+            > Pour des besoins de reférencement on veut que quand l'utilisateur tape la version `www` il soit rediriger vers la version sans 
+    > Un des problèmes avec nginx est que par défaut il traite tous les fichiers, donc si on n'a fichier du genre .htaccess et qu'on essai d'y accéder via le navigateur il va le télécharger directement, pour y remedier on utilise un filtre `location` dans notre configuration
+    > Pour mettre en place la `réecriture d'url`, on utilise un filtre `rewrite` dans notre configuration, mais en géneral nos framework le gère
+    > Pour afficher un listing qui permet de voir le contenu de nos dossiers comme celui apache, on utilise l'option `autoindex` dans notre configuration
+    > On pourrait ne pas laisser notre serveur accessible par défaut mais redirigé tous vers la partie 301 en modifiant la configuration du serveur `sudo vim default.conf` on éfface le `location /` et on mais le `return 301 http://monsite.fr$request_uri` à la place, permet au gens de ne pas voir la page d'accueil nginx lorsqu'on l'ip de notre serveur est tapé dans le navigateur et aussi pour le reférencement ça évite que notre ip soit reférencé
+
+- Pour activer le site si on n'a fais une installation à la debian
+    > sudo ln -s /etc/nginx/sites-available/monsite.conf /etc/nginx/sites-enabled/ : Créer le lien symbolique
+    > sudo nginx -t : Tester la configuration
+    > sudo systemctl reload nginx
+
+- Pour désactiver le site
+    > sudo rm /etc/nginx/sites-available/monsite.conf : Supprimer le lien symbolique
+    > sudo systemctl reload nginx
+
+- Si on n'a un `.htaccess` déjà fait, on peut aller sur `winginx.com` qui permet de le convertir en directive nginx
+- Nginx peut faire du de `reverse proxy` rediriger vers d’autres serveurs, aussi du `load balancing` plusieurs backends
+
+- Erreur : Lorsqu'on a une erreur 500, on prend le reflexe de regarder dans le fichier de log 
+    > tail -f /home/dev/logs/error.log
+
+
+**PHP FPM** - Nginx n'a pas de module qui lui permet de comprendre les fichiers php comme apache, en revenche on peut configurer le module fastcgi de nginx pour qu'il communique avec une application tiers, on vas donc utilisé `php fpm` qui est en mode fastcgi pour pouvoir interprêter les fichiers php
+- sudo apt-get install php8-fpm
+    > Configuration `/etc/php/8.4`
+        > cli : La configuration de php en mode ligne de commande
+        > mods-available : Les modules disponibles
+        > fpm : La configuration de php en mode fpm
+            > php.ini : La configuration de php de php-fpm
+                > display_errors=On : Si on veut afficher les erreurs en production et on redémarre apache
+            > conf.d : Contient la configuration de différent modules qui ont été installé par défaut
+                > 10.opcache.ini : Contient la configuration de opcache, on peut activer le cache de opcache par ex
+                > 10.pdo.ini ...
+            > pool.d
+                > www.conf : Php fpm fonctionne sous forme de workers, lorsqu'il est lancé on vas avoir un certain nombre de workers qui vont être prêt à interprêter du php, donc pour configurer leur nombre on le fais ici
+                    > user = www-data - group = www-data : L'utilisateur et le groupe utilisé par php fpm, donc il faudra faire attention à ce que nos fichiers soit accessible au moins en lecture par cet utilisateur
+                    > listen = run/php/php8.4-fpm.sock : Par défaut il écoute sur un socket donc lorsqu'on voudra faire communiquer nginx avec php fpm il faudra faire le lien vers ce socket
+                    > listen.owner = www-data - listen.group = www-data : Le propriétaire et le groupe sur les socket
+                    > Ensuite on des config sur la performence ..
+                > php-fpm.conf : On a la configuration générale
+                    > error_log : Si on modifier le chemin des logs
+                    > /pool.d : En bas il inclus le fichier pool.d
+        > Si on n'a modifier la configuration de php-fpm on fais `sudo service php8-fpm restart`
+        > Pour faire communiquer php fpm avec nginx - `location ~* \.php$`
+
+- En cas d'erreur `tail -n 30 /var/log/nginx/error.log` 
+- Pour tester on vas installer un framework
+    > !! On n'a installer `symfony`
+        > Le framework symfony utilise un dossier `public` qui contient un fichier `index.php` donc notre configuration `root` de nginx doit pointer vers ce dossier, on modifie aussi le `index` du fichier de configuration nginx pour ajouter `index.php`, il utilise aussi un dossier `var` qui doit être accessible en écriture par le groupe `chmod g+w -R www/var` aussi si on n'a un système d'upload dans le dossier `public` on lui donne aussi les droits
+    > En revanche si on essaie d'acceder a un url ou un dossier on tombe sur une erreur 404, on doit faire de la réecriture d'url pour rediriger toutes les requêtes vers le `index.php`, on modifie la configuration nginx `try_files`
+- Pour les extensions on le fais de manière classique !!
+
+
+**Node js - Ngnix** - nodejs.org
+- L'intérêt de l'hébergement d'application node avec nginx étant donné que node peut être utilisé comme un serveur web est qu'il va être capable de faire coexister plusieurs applications node ensemble
+    > Le problème est que si on veut héberger une application qui repond au domaine A et une autre qui repond au domaine B sur le même serveur, ça va être compliquer parceque les 2 applications ne peuvent pas fonctionner sur le même port `80` si il semble provoquer des problèmes donc il faut un système qui détecte le nom de domaine et redirige vers la bonne application suivant les besoins
+
+- Sur le serveur j'ai un projet laravel et dans un sous dossier `websocket` qui contient mon application node qui écoute sur le port 4000 en localhost donc n'est pas accessible depuis l'extérieur
+    > cd websocket, node server.js
+
+- Pour installer node, on peut le faire via `nvm` node version mamanager qui permet de faire cohabiter plusieurs versions ensemble
+    ```t
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+    \. "$HOME/.nvm/nvm.sh"
+    nvm install 24
+    node -v && npm -v
+    ```
+- Après installation on fais un coup de `node server.js` pour lancer mon serveur qui écoute sur le `4000` et qui est en attente, il pourrait être tentant de me rendre sur mon application nginx en tapant `monsite.com:4000` ou `localhost:4000` voir mon application, vu que je n'écoute sur localhost ou si je ferme les port dans mon cas ce n'est pas accessible dépuis l'extérieur, la séconde choses qu'on va faire est de demander à nginx de faire `proxy` lui dire lorsque quelqu'un se rend sur `monsite.com` plutôt que tu m'affiche la page par défaut je veut que tu m'affiche la page node js en créant un vhost au niveau de nginx
+    > sudo vim /etc/nginx/sites-available/monsite.com
+        > On défini un `upstream` qui est une directive qui permet de spécifier un groupe de serveur `Load Balancing`
+        ```conf
+        upstream monsite {
+            server localhost:4000;
+            # server localhost:3000;
+            # server unix:/home/..; -- On peut aussi utiliser des sockets comme du faite qu'on n'a un serveur express qui écoute sur un socket, ':/home' chemin vers le socket
+        }
+
+        server {
+            listen 80; # On peut écouter aussi en https
+            listen [::]:80; # Si je veux écouter aussi le Ipv6
+            server_name monsite.com; # Lorsque je me rend sur ce site tu dois déclancher mon comportement
+
+            location /assets/ {
+                alias /home/dev/www/assets;
+                gzip_static on; # Pour activer le gzip
+                expires max;
+                add_header Cache-Control public;
+            }
+
+            location / { # Lorsque quelqu'un éssaie d'accéder à l'application peut importe l'url on le proxy vers le stream
+                proxy_pass http://monsite;
+
+                ## -- Pour le support de websocket
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+
+                # proxy_set_header Host $host;
+                # proxy_cache_bypass $http_upgrade;
+            }
+        }
+        ```
+    > sudo ln -s /etc/nginx/sites-available/monsite.com /etc/nginx/sites-enabled/monsite.com
+    > sudo nginx -t
+    > sudo service nginx reload
+        > Si je me rend sur le site je verrai que node prend le dessus
+
+- Le preoblème est qu'on ne peut pas dès qu'on veut lancer notre application se rendre sur le serveur et taper `node server.js`, pour ça on n'a besoin de quelque chose qui tournent en tâche de fond sous forme de demon, on n'a `forever` ou `pm2` qui est un peu complet qui affiche un système de monetoring
+    > npm install pm2 -g
+    > pm2 start server.js : Pour démarrer le server
+        > Nous montre des informations, démarre le serveur, `mode` fork, `status` online, nombre de fois qu'il a dû redémarrer, `cpu` l'utilisation du proccesseur, `memory` la mémoire utilisé
+    > pm2 ls : Tous les serveurs disponibles
+    > pm2 monit : Permet d'ouvrir un monotoring qui affiche les serveurs disponibles et les logs globaux en live
+    > pm2 stop server : Pour stoper notre serveur, `server` le nom qu'il a donnée au fichier server.js
+    > pm2 delete server : Pour le supprimer de la liste
+    > pm2 show server : Plus d'informations sur un serveur
+
+- Par contre ce qu'il se passe si jamais notre serveur crache, pour tester on throw une erreur dans le fichier `server.js`
+    > pm2 restart server : Pour redémarrer le serveur
+        > Se rendre sur l'application pour que ça plante, côté `monit` va nous afficher les erreurs, `pm2` va se charger de couper notre serveur et le relancer
+
+
+- Un chose qu'on peut faire est de distribuer les assets directement via nginx sans passer par nodejs peut nous permettre de gagner en performence grâce au `location /assets/`
+- pm2 permet d'installer des `plugins` pour acceder au dashbord depuis le web ou mettre en place la rotation des logs
+
+
+- - 
+- **Attaques HTTP-FLOOD** - Attaques par déni de services
+    > Se protéger contre un utilisateur qui se met à spamé le serveur, le but est de le détecter et le banir pour ne pas surchargé nos requêtes
+    > Pour illustrer les attaques par déni de services on vas spamé notre serveur, on n'a des outils comme `hey` écrit en go
+        > ./go/bin/hey -n 200000 -c 100 : `-n` nombres de requêtes à exécuter, `` on les lance de manière concurente 100 par 100
+        > Notre serveur prendra plus en plus de temps pour repondre à nos requêtes, pour voir ce qui se passe sur notre serveur on tape la commande `htop` qui permet de voir les différents procéssus qui sont lancés et on filtre pour voir ceux de `php-fpm`, par défaut il y'a trois procéssus qui sont lancés pour gérer les différents requêtes donc si je me met à spamé php-fpm va faire spone de nouveau procéssus par rapport à la configuration qui par défaut est 5 procéssus maximum, le problème est que ces procéssus sont déjà occupé à repondre à ce spam du coup quand un nouveau visiteur arrive il est obligé d'attendre qu'un procéssus ce libère du coup on n'a des temps d'exécution qui sont plus conséquent
+    > Pour s'en protéger, nginx dispose du module `ngx_http_limit_req_module` qui permet de réglé la manière qu'à le serveur de réagir face à un nombre trop conséquent de requêtes
+        > vim /etc/nginx/nginx.conf
+            ```conf
+            http {
+                limit_req_zone $binary_remote_addr zone=one:10m rate=1r/s; -- Permet de définir une zone et de définir une limite pour cette zone, '$binary_remote_addr' la clé qu'on vas utilsé qui est une variable qui contient une adresse ip, 'zone' on défini la zone et l'espace qui va être alloué, 'rate' le taux de requête par seconde
+            }
+            ```
+    > vim /etc/nginx/sites-enabled/default
+            ```conf
+            location ~ \.php$ {
+                limit_req zone=one burst=5; Permet de limiter le nombre de requête sur un serveur ou sur une url, on le met dans le filtre php car si l'utilisateur arrive sur le site il peut faire plein de requêtes en même temps en chargeant le css et js, 'burst' le nombre de requête qu'on peut garder en mémoire si l'utilisateur fait 3 requêtes consécutives nginx gére une par séconde, si 10 nginx va éssayé de repondre à 5 avec le rythme du taux par les 5 autres requêtes de traux nginx les arrêtes en repondant avec une 503, pour changer le status 'limit_req_status 503'
+            }
+            ```
+    > nginx -t
+    > tail -f /var/log/nginx/error.log : Pour tester en live les erreurs 503 en ayant lancé le spam
+    > Ce système n'empêche pas l'utilisateur de spamé, on vas devoir banir l'utilisateur en utilisant `fail2ban` en rajoutant une règle par rapport à ce comportement, on copie la ligne d'erreur 503 du fichier de log et on vas l'utilisé comme expression régulière pour détecter ces erreurs
+        > vim /etc/fail2ban/filter.d/nginx-req-limit.conf
+            ```conf
+            [Definition]
+            failregex= limiting requests, excess:.* by zone.*, client: <HOST>
+            ignoreregex=
+            ```
+    > fail2ban-regex /var/log/nginx/error.log /etc/fail2ban/filter.d/nginx-req-limit.conf : Pour tester le match, lance les tests pour trouver les correspondances
+    > Pour intégrer cette règle à la listes des règles qui vont être utilisés par fail2ban
+        > Si on n'a pas de fichier `jail.local` - cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+        > vim jail.local
+            ```conf
+            [nginx-req-limit]
+            enabled=true
+            filter= nginx-req-limit; -- Le filtre à utilisé pour établir un échec
+            logpath= %(nginx_error_log)s ; -- Le fichier de log à analysé, une variable que fail2ban connaît déjà
+            findtime= 600; L'interval de temps utilisé pour détecter les échec en seconde
+            bantime= 864000; -- Le temps de ban de l'utilisateur en seconde, pour tester on peut mettre 60
+            maxretry= 10; -- Le nombre d'échec ou de requêtes dans notre cas qu'on vas compter dans l'interval de temps 'findtime' ce qui détermine si on doit banir l'utilisateur, il faut affiner en faisant attention à ne pas ban des robots google
+            ```
+    > service fail2ban restart
+    > tail -f /var/log/nginx/error.log : Pour tester les ban en live et spamé le serveur
+        > Va analyser mon log et s'il trouve une ip qui correspond au filtre il le bani
+    > Par défaut il le ban du `http` et `https` mais on peut faire en sorte qu'il le ban de tous `port=`
+    > Pour regarder l'état de la prison qui correspond à ce filtre
+        > fail2ban-client status nginx-req-limit
+
+- **DDOS** - Attaques par déni de services distribués
+    > L'attaquant utilise une série de service pour spamé notre serveur, le problème est que ça génère beaucoup d'ip différents qui vont nous attaqués donc c'est difficile de savoir si une ip est une ip correcte ou une ip est d'un ordinateur infecté
+- - 
+
+
+
+
+
+
+
+
+
+Pour acceder http://monsite.fr:8080/ vu que j'ai fais une redirection de port
+
+
+
+
+
+
+
+
+
+Okay Adamo, on se met en mode **sécurité Nginx**. Je te fais ça clair, concret, et actionnable.
+Pas de théorie poussiéreuse — juste ce qu’il faut pour que ton serveur encaisse les coups sans plier.
+
+---
+
+# ✅ Comment se protéger contre les attaques DDoS/DoS avec **Nginx**
+
+On va couvrir :
+
+1. **Limiter le nombre de requêtes (rate limiting)**
+2. **Limiter les connexions simultanées**
+3. **Activer des timeouts agressifs**
+4. **Activer la protection contre les requêtes trop grosses**
+5. **Utiliser des règles basiques anti-bot**
+6. **Filtrer par IP (whitelist/blacklist)**
+7. **Bonus : combiner avec Fail2ban**
+
+---
+
+# ✅ 1 — Limiter la fréquence des requêtes (Rate Limiting)
+
+Hyper efficace pour casser les floods simples.
+
+### ★ Dans `/etc/nginx/nginx.conf` (ou dans `/etc/nginx/conf.d/limits.conf`) :
+
+```nginx
+http {
+    # 10 requêtes par seconde par IP
+    limit_req_zone $binary_remote_addr zone=one:10m rate=10r/s;
+
+    server {
+        location / {
+            limit_req zone=one burst=20 nodelay;
+        }
+    }
+}
+```
+
+**Explication :**
+
+* `rate=10r/s` → chaque IP peut faire 10 req/s max
+* `burst=20` → petite marge avant de bloquer
+* `nodelay` → on bloque tout de suite si l’IP abuse
+
+---
+
+# ✅ 2 — Limiter les connexions simultanées
+
+Très utile pour stopper les flood HTTP keep-alive.
+
+### ★ Ajouter :
+
+```nginx
+http {
+    limit_conn_zone $binary_remote_addr zone=addr:10m;
+
+    server {
+        limit_conn addr 20; # max 20 connexions simultanées par IP
+    }
+}
+```
+
+---
+
+# ✅ 3 — Mettre des timeouts agressifs
+
+Réduit l’impact des attaques "slowloris" (client qui envoie la requête super lentement).
+
+```nginx
+server {
+    client_body_timeout 10s;
+    client_header_timeout 10s;
+    keepalive_timeout 20s;
+    send_timeout 10s;
+}
+```
+
+---
+
+# ✅ 4 — Empêcher les requêtes trop grosses
+
+Beaucoup d’attaques utilisent des payloads énormes pour saturer.
+
+```nginx
+client_max_body_size 2M;
+```
+
+---
+
+# ✅ 5 — Règles anti-bot / anti-user-agents suspects
+
+```nginx
+if ($http_user_agent ~* "(curl|wget|nikto|fimap|sqlmap|havij|crawler)") {
+    return 403;
+}
+```
+
+---
+
+# ✅ 6 — Bloquer des IP spécifiques (ou ranges)
+
+### Bloquer :
+
+```nginx
+deny 192.168.1.10;
+deny 203.0.113.0/24;
+```
+
+### Autoriser seulement un pays ou une IP (rare mais efficace) :
+
+```nginx
+allow 1.2.3.4;
+deny all;
+```
+
+---
+
+# ✅ 7 — Bonus : Combiner Nginx + Fail2ban (super efficace)
+
+Fail2ban = quand une IP abuse → **bannissement automatique**.
+
+### Jail spécial pour Nginx DoS :
+
+`/etc/fail2ban/filter.d/nginx-limit-req.conf`
+
+```txt
+[Definition]
+failregex = limiting requests, excess burst
+ignoreregex =
+```
+
+### Jail :
+
+`/etc/fail2ban/jail.local`
+
+```txt
+[nginx-limit-req]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/error.log
+maxretry = 5
+findtime = 30
+bantime = 600
+```
+
+---
+
+# ✅ Niveau Pro : Ce qui renforce énormément la protection
+
+* Utiliser **Cloudflare** (gratuit, blindé anti-DDoS)
+* Mettre une **reverse proxy** devant ton serveur
+* Activer **HTTP/2 rate limiting** pour éviter les floods multiplexés
+* Configurer le **conntrack** du firewall
+* Limiter la bande passante par IP (iptables/ifb)
+
+---
+
+# ✅ Si tu veux, je peux aussi :
+
+✅ te préparer une configuration **complète** à copier/coller
+✅ te faire une version **optimisée pour ton serveur** (CPU, RAM, trafic)
+✅ te montrer comment tester ta protection
+✅ te faire un tuto “Nginx + Cloudflare + Fail2ban”
+
+Tu veux la version complète / prête à coller ?
+
+
+
+
+
+
+
+
+
+
+
+# ✅ 2 — DDoS : attaque *réseau*
+
+👉 Et là… Nginx ne peut presque rien faire ❌
+
+**Principe :**
+Des milliers, parfois des millions de machines bombardent ton serveur au niveau **réseau** :
+
+* flood UDP
+* SYN flood
+* TCP flood
+* amplification DNS/NTP
+* volumétrique (ex : 500 Gbps)
+
+🔸 **Cible :** ta bande passante / ton firewall
+🔸 **Saturation :** ton datacenter avant même que Nginx voit le trafic
+🔸 **Nginx est déjà mort avant l’impact** 😬
+
+### ✅ Contre ça, il faut :
+
+* Cloudflare / OVH Anti-DDoS / Akamai
+* iptables + synproxy
+* limiter la bande passante
+* tuning kernel (net.core.somaxconn, backlog, syn cookies)
+* protection au niveau FAI / hébergeur
+
+👉 **Ce n’est plus du tout le domaine de Nginx.**

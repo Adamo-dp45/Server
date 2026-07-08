@@ -1,0 +1,183 @@
+### Fail2ban - Banir automatiquement les utilisateurs après un certains nombre d'échèc
+
+- sudo apt install fail2ban - *Banir - Echec à la connexion ssh, trop de 404, acceder à un fichier precis*
+- sudo ss -tuln : Pour vérifier les ports ouverts sur notre serveur
+    > t  TCP
+    > u : UDP
+    > l - Uniquement les ports en écoute
+    > n - Affiche les numéros de ports au lieu des noms de service
+- sudo ss -tulnp | grep :80 : Vérifier qu’apache écoute sur le port 80
+
+- Configuration `/etc/fail2ban`
+    > jail.conf : Permet de configurer la manière de se comporter de nos différentes prisons
+        > Vu que ce fichier va être écraser lorsqu'on chargera la configuration, on copie `sudo cp jail.conf jail.local`
+        > sudo vim jail.local
+            > ignoreip : L'ip à ignorer, par défaut l'ip local
+            > ignorecommand : On lui passerait une ip et il retournera true si on doit ignorer
+            > bantime = 600 : Banir 600s `10min` lorsque quelqu'un va correspondre à une règle particulière
+            > findtime = 600 : Va lire les logs et analyser pendant une période de temps le nombre de fois que quelqu'un échoue, on peut être tenté de mettre quelque chose d'important mais plus il est grand plus il oblige fail2ban à lire une grosse partie des logs du coup ça va prendre un petit peu plus de mémoire
+                > maxrety = 3 : Si quelqu'un échoue trois fois dans une intervalle de 10 minutes, il va être bloquer
+            > destemail : Indique à qui on vas envoyer les erreurs en cas de ban `adamo.dp45@gmail.com` boîte mail
+            > sendername = Fail2ban : Celui qui envoie l'email et le from `sender`
+            > sender = localhost@debian : Le from qui sera utiliser
+            > banaction = iptables-multiport : L'action à utiliser lorsqu'on va banir quelqu'un
+                > iptables-multiport : Rajoute une règle à iptables et peut banir plusieurs port à la fois
+            > mta = sendmail : Comment fail2ban va envoyer un email en cas d'alerte, ou `mail` si on n'a installer `postfix`
+            > protocol = tcp : Protocol à utiliser
+            > action = %(action_mwl)s
+                > action_ : Action à appliquer lorsque je trouve quelqu'un qui correspond à mes critères - ban simplement
+                > action_mw : && en envoyant un email ainsi qu'un whois conçernant l'ip qui a été incriminé
+                > action_mwl : && bani, envoi un email et dans cette email join les logs - Recommandé
+        > `Jails` : Les différentes prisons qui vont être configurer, contient plusieurs règle par defaut - [apache] et autres
+                > [ssh] enabled = true port = ssh filter = sshd logpath = /var/logs/auth.log maxrety = 6 : `enabled` true car c'est configuré pour être activé, `port` ssh le port standart, `filter` filtre à utilisé, `logpath` le fichier de log à analysé, `maxrety` nombre d'échec à la connexion ssh pour être bloquer
+    > action.d : Contient un ensemble d'action à éffectué lorsque quelqu'un correspond a une règle
+    > filter.d : Contient les filtres à utilisés
+        > sshd.conf : On a une regex qui permet de trouver lorsque quelqu'un échoue
+            > sudo fail2ban-regex /var/logs/auth.log /etc/fail2ban/filter.d/sshd.conf : Pour tester une règle, en premier paramètre on lui passe les logs d'authentification `/var/logs/auth.log` et en seconde la règle qu'on veut tester `/etc/fail2ban/filter.d/sshd.conf`, ensuite on ouvre un deuxième terminal puis on se connecte à ssh et testé en faisant des échec lors de la connexion ssh, et si on dépasse le nombre d'échec on verra qu'on a été bloqué dans le premier terminal
+                > Vu que j'ai accès à ma machine virtualbox, on peut vois ce qui s'est passé
+                    > sudo fail2ban-client status : On verra qu'il y'a une prison qui à été configurer qui est celui de ssh
+                    > sudo fail2ban-client status ssh : Celui du ssh, va nous lister aussi les ip qui ont été bani
+                    > sudo fail2ban-client set ssh unbanip 10.0.2.2 : Permet de débanir une ip
+                > Si je relance la commande `sudo fail2ban-regex /var/logs/auth.log /etc/fail2ban/filter.d/sshd.conf` on verra qu'on n'a 2 lignes dans le qui correspond à ce filtre
+                    > tail -n 30 /var/logs/auth.log : Pour en savoir plus
+
+- Pour les autres filtres
+    > On a des règles qui conçerne `apache`, [apache-auth] règle qui concerne les accès par `htpassword`, [apache-noscript] pour interdir l'accès au script qui sont par défaut à false
+    > On a des règles qui conçerne `nginx`, [nginx-http-auth], côté nginx on n'a moins de règle par rapport à apache, on peut en créer en s'inspirant des règle de apache
+
+- Pour créer une règle `/etc/fail2ban/filter.d`, on peut voir le filtre `apache-noscript.conf` qui regarde est ce quelqu'un essai d'acceder directement à un fichier php,cgi,asp,exe et que ces fichiers ne sont pas trouvés
+    > tail -n 300 /var/log/nginx/error.log : On copie l'erreur qui s'affiche lorsqu'on arrive pas à accéder à un fichier pour pouvoir créer mon filtre
+    > sudo vim /etc/fail2ban/filter.d/nginx-noscript.conf : Pour créer un filtre
+        ```conf
+        [Definition]
+        failregex = \".*(\php|\.exe)\" failed \(2\: No such file or directory\), client\: <HOST> # Permet de détecter notre ligne
+        ignoregex = # On ne met rien à l'intérieur
+        ```
+    > sudo fail2ban-regex /var/log/nginx/error.log /etc/fail2ban/filter.d/nginx-noscript.conf : On se retrouve avec des match ce qui veut dire que ma règle est prête à fonctionnée
+    > sudo vim /etc/fail2ban/jail.local : On rajoute notre règle à côté de la partie nginx et on redémarre
+        ```conf
+        [nginx-noscript]
+        enabled = true
+        filter = nginx-noscript
+        port = http,https
+        logpath= /var/log/nginx/error.log
+        ```
+    > Pour tester on dans l'url et chercher un fichier qui n'existe pour dépasser le nombre de fois autorisé et à un moment donné on verra le navigateur mouline dans le vide, si je fais `sudo fail2ban-client status` on verra qu'on n'a une jail pour notre filtre `nginx-noscript`
+        > sudo fail2ban-client status ssh : On verra que notre ip à été bani, si je regarde la partie log ou email on nous donne les informations du ban
+
+- sudo service fail2ban restart : Redémarrer après configuration
+- On doit faire attention a ne pas être trop strict car on risque de bloqué des robots qui servent à reférencé notre site
+
+
+
+
+
+
+
+
+
+
+
+Parfait 😄 — Fail2Ban est un outil de sécurité sur Linux qui protège un serveur contre les attaques par force brute en bloquant automatiquement les IP qui échouent trop de fois à se connecter (SSH, FTP, HTTP, etc.). Il fonctionne en surveillant les logs et en ajoutant des règles iptables ou firewalld. Voici une utilisation complète de Fail2Ban.
+
+2️⃣ Fichiers de configuration
+
+/etc/fail2ban/jail.conf → configuration globale par défaut (ne pas modifier directement)
+
+/etc/fail2ban/jail.local → fichier recommandé pour vos personnalisations
+
+
+> Astuce : toujours créer jail.local pour ne pas écraser les mises à jour du package.
+
+
+[DEFAULT]
+bantime = 3600        # temps de ban en secondes (1h)
+findtime = 600        # période pendant laquelle les échecs sont comptés (10 min)
+maxretry = 5          # nombre d'échecs avant le ban
+backend = systemd      # pour systemd, ou auto pour auto-detect
+
+[sshd]
+enabled = true
+port = 22
+logpath = /var/log/auth.log
+maxretry = 5
+
+bantime → durée du blocage
+
+findtime → période pour compter les échecs
+
+maxretry → nombre d’échecs avant blocage
+
+
+
+
+sudo fail2ban-client set sshd unbanip 1.2.3.4 Débloquer une IP manuellement
+sudo fail2ban-client set sshd banip 1.2.3.4 Bannir une IP manuellement
+sudo fail2ban-client reload Recharger la configuration
+
+
+5️⃣ Jails utiles par défaut
+
+[sshd] → pour SSH
+
+[vsftpd] → FTP avec vsftpd
+
+[proftpd] → FTP avec ProFTPD
+
+[apache] / [apache-badbots] → protéger serveur web contre bots malveillants
+
+[nginx-http-auth] → protéger Nginx avec HTTP auth
+
+> Chaque jail utilise un fichier log pour détecter les tentatives échouées
+
+
+action_mwl → envoie un email avec logs des tentatives échouées
+
+
+1. Toujours activer pour SSH pour éviter les brute force
+
+
+
+1️⃣ Alternatives directes à Fail2Ban
+
+Outil Description Points forts Points faibles
+
+CSF (ConfigServer Security & Firewall) Pare-feu + protection brute force, facile à configurer Interface web via cPanel, intègre firewall et monitoring Surserveurs non cPanel, moins flexible que Fail2Ban pour logs personnalisés
+SSHGuard Surveille logs et bloque IP attaquantes via iptables, pf, firewalld Léger, simple, rapide, multi-service Moins configurable que Fail2Ban
+DenyHosts Protège uniquement SSH Simple, efficace pour SSH Limité à SSH seulement
+BlockHosts Comme DenyHosts, protection SSH Simple Limité à SSH et configuration minimaliste
+
+
+
+---
+
+2️⃣ Alternatives / solutions plus générales
+
+Outil / Service Description
+
+iptables / UFW avec rate limiting Limiter le nombre de connexions par IP directement dans le pare-feu
+ModSecurity WAF (Web Application Firewall) pour Apache/Nginx
+CrowdSec Nouvelle génération de Fail2Ban avec communauté de réputation IP
+OSSEC / Wazuh HIDS (Host-based Intrusion Detection System)
+
+
+
+---
+
+3️⃣ Compléments utiles
+
+Fail2Ban + iptables/UFW → combinaison classique pour SSH, FTP, HTTP.
+
+Fail2Ban + ModSecurity → protège à la fois les services systèmes et les applications web.
+
+CrowdSec → alternative moderne, avec partage des IP malveillantes pour une protection collective.
+
+
+💡 Astuce :
+
+Pour un serveur léger et sécurisé : Fail2Ban + UFW suffit.
+
+Pour un serveur web public : ajoute ModSecurity ou CrowdSec.
+
+Pour SSH seul, SSHGuard ou DenyHosts suffisent.
+

@@ -1,0 +1,39 @@
+### Rsync - Syncroniser plusieurs dossiers ensemble
+
+- sudo apt install rsync
+- rsync -av : `a` signifie `archive` et c'est un alias vers plusieurs drapeau, `v` signifie `verbose` c'est une commande donne plus d'informations sur ce que la commande fait
+    > rsync -av ./source ./destinnation : Pour copier le dossier source dans la destinnation, par défaut rysnc ne copie que des fichiers mais avec le `a` ou `r` il pourra copier des dossiers
+    > rsync -av ./source/ ./destinnation : Ici avec le `/` on lui dit de copier le contenu du dossier dans la destinnation
+- rsync -avh : `h` pour afficher les informations dans un format humain
+- rsync -avP : `P` permet d'afficher la progression
+- rsync -avz : `z` va compresser avant d'envoyer les fichiers pour optimizer le réseau mais l'inconvenient est qu'il demande plus de travail à la machine et la machine qui va recevoir va le décompressé, recommandé sur réseau limité pour consommer trop de débit
+
+- rsync -avz --dry-run ./Demo ./Demo2 : `--dry-run` va nous montrer ce qu'il va faire sans rien faire, ou `rsync -avzn`
+- rsync -avzn --delete ./Demo ./Demo2 : `--delete` supprime les fichiers dans la destination qui n’existent plus dans la source et fera une véritable synchronisation, `-n` pour voir ce qu'il va faire ensuite je l'enlève pour faire
+- rsync -avz --delete --exclude=env --exclude=env.local ./Demo ./Demo2 : `--exclude` si je n'envoi pas le fichier env par exemple, je l'exclus pour ne pas qu'il soit supprimé en local
+    > rsync -avz --delete --exclude=**/env.local ./Demo ./Demo2 : Même si le fichier est dans un sous-dossier, le chemin sera n'importe quoi et ensuite le fichier
+    > rsync -avz --exclude-from=FILE : On peut lui spécifier un fichier qui contient l'ensemble des fichiers à ignorer
+
+- rsync -avzb ./Demo ./Demo2 : `b` ou `--backup` créer un fichier temporaire qui fini par un `~` par défaut le fichier est caché, `--suffix=` permet de changer le suffix `~` et on peut lui dire de mettre les fichiers de backup dans un dossier grâce au drapeau `--backup-dir=`, utile si on a tous cassé lors d'un rsync, ces fichiers seront conservé et on pourra les réécrasé si néccéssaire mais si on refais un rsync il écrase l'ancien
+
+- - 
+- rsync -avz ./Demo demo@dev.droapp.com:~/monapp -e "ssh -p 2222" : Pour uploader sur un serveur, `e` permet de spécifier le shell distant à utiliser, `~/` dossier personnel de l'utilisateur ou `/home`
+    > Dans le cas d'une copie côté serveur les groupes ne sont pas conservés, il seront tous à linux `demo`, par contre les permissions sont conservés
+- rsync -av demo@dev.droapp.com:~/monapp/ ./App : Pour récupérer les fichiers à partir d'un serveur,`/` pour les fichiers
+- - 
+
+- Le drapeau `a` est raccourci vers les drapeaux
+    > `r` indique que la copie doit récurssive
+    > `l` permet de récréer les liens symboliques s'il y'a en avait dans le dossier original
+    > `p` permet de copier les permissions à l'arrivé
+    > `t` permet de faire le transfert de date de modification et permet à l'algo de savoir quel fichier a été modifié
+    > `g` pour copier les groupes
+    > `o` pour copier les owner
+
+- Le drapeau `P` est raccourci vers les drapeaux
+    > `--progress` pour afficher la progression
+    > `--partial` permet de conserver les fichiers qui ont été conserver de manière partiel, utile pour transférer de gros fichiers et de reprendre un transfert interrompu
+
+- Les autres drapeaux
+    > `--bwlimit=1000` pour limiter la bande passante à 1000 KB/s
+    > `--chmod=Du+rwx,Dgo+rx,Fu+rw,Fgo+r` pour modifier les permissions sur la destination

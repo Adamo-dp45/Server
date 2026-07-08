@@ -1,0 +1,12 @@
+---
+# La liste des opérations à éffectués
+- name: Installation des serveurs web
+  hosts: web # Le groupe sur lequel on vas éffectué les tâches qu'on vas définir dans cette liste
+  remote_user: root # L'utilisateur qu'on vas utilisé pour se connecter sur chacun des serveurs
+
+  tasks: # Une série de tâches et chaque tâches sera composé de plusieurs propriétés
+    - name: Installation de git
+      apt: name=git update_cache=yes # 'update_cache' permet de mettre à jour les packages avant l'installation
+    - name: Installation de vim
+      apt: name=vim
+...

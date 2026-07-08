@@ -1,0 +1,64 @@
+### Caddy - Web server `caddyserver.org`
+
+- Installer via `caddyserver.org`
+    > systemctl status caddy
+    > journalctl --no-pager -u caddy -f : Permet de voir ce qui passe lorsqu'on configure caddy, `f` pour watcher
+
+- Configuration `/etc/caddy/Caddyfile`
+    ```conf
+    # :80 {
+    #    root * /usr/share/caddy -- La racine du serveur, * la racine pour toutes les requêtes - matcher
+    #    file_server
+    # }
+
+    # fiasco.com { -- Nom d'hôte auquel on repond
+    #    root * /var/www/fiasco
+    #    file_server -- Caddy peut aussi lister les fichiers de notre projet si on met en valeur 'browse'
+    #    encode gzip
+
+    #    php_fastcgi localhost:9000 -- Php
+    # }
+
+    adonis.com {
+        @static file # @. matcher, si le fichier existe on le délivre sinon on passe par le reverse_proxy
+        @notStatic not file # !! n'existe pas
+
+        root * /var/www/adonis/public
+        header @static Cache-control max-age=604800 # Pour mettre en cache les fichiers static, 604800 - 7j
+        file_server
+        # reverse_proxy 127.0.0.1:3333 -- Le port qu'on souhaite atteindre, ensuite node va prend le relais
+        reverse_proxy @notStatic 127.0.0.1:3333 # On l'utilise que si le fichier n'existe pas
+        encode gzip
+
+        log {
+            output file /var/www/error.log # Par défaut part en console, 'file' pour avoir une sortie en fichier
+            format json # On n'a aussi 'console'
+            level ERROR # Si on veut qu'il nous log que les erreurs, on peut ajouter 'INFO' pour les autres informations
+        }
+    }
+
+    www.adonis.com {
+        redir https://adonis.com{uri} # La redirection www
+    }
+
+    { # Configuration générale de caddy, va affecter tous le monde
+        servers {
+            protocol { # On peut ajouter le support du http3 par ex
+                experimental_http3
+            }
+        }
+    }
+    ```
+- systemctl restart caddy
+    > Caddy va savoir automatiquement qu'on parle du domaine `fiasco.com` et va générer le certificat ssl pour ce domaine là et si on se rend sur le site on verra qu'il est en https
+
+- Pour la performence on active le `gzip` ensuite `systemctl reload caddy`
+
+- Pour faire du reverse proxy du genre si on'a une application nodejs qui tourne et qu'on veut délivrer cette l'application
+    > pm2 start server.js
+    > systemctl reload caddy
+
+- Si on n'a un problème de permission pour le fichier de log
+    > touch /var/www/error.log
+    > chown caddy:caddy error.log
+    > tail -n 30 -f error.log

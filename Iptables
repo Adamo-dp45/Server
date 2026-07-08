@@ -1,0 +1,183 @@
+### Iptables - Pare-feu pour controler les connexions entrentes et sortante avec notre serveur
+
+- sudo iptables : Installer par défaut sinon - sudo apt install iptables
+- sudo iptables -L : La liste des règles qu'on a
+    > INPUT : Le premier gorupe, pour les packets rentrent
+    > FORWARD : Pour les packets qu'on vas redirigés
+    > OUTPUT : Pour les packets sortants
+- Par défaut si aucune règle n'est définie, il accepte tous, donc nous on vas fermer et autoriser ceux qu'on veut
+    > sudo iptables -P INPUT DROP : Pour de couper toutes les connexions rentrante, mais par défaut les règles ne sont pas persisté, donc si on s'enferme dehors il faudra redémarrer notre serveur
+- Une fois la machine redémarrer les règles sont automatiquement éffacés et on récupère l'accès au serveur, donc pour gérer les règles qu'on a au niveau de notre pare-feu il faut créer un fichier pour pouvoir taper les commandes de manière auto
+    > sudo vim parefeu.sh
+    ```sh
+        #!/bin/sh -- Shell à utilisé
+        # Vider les règles déjà existantes
+        iptables -t filter -F
+        iptables -t filter -X
+        # Refuser toutes les connexions
+        iptables -t filter -P INPUT DROP
+        iptables -t filter -P FORWARD DROP
+        iptables -t filter -P OUTPUT DROP
+        # On ne bloque pas les connexions déjà ouverte, '-A' rajoute une règle
+        iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+        # On autorise le loop-back (localhost) - ex : php pourra se connecter à mysql
+        iptables -t filter -A INPUT -i lo -j ACCEPT
+        iptables -t filter -A OUTPUT -o lo -j ACCEPT
+        # On autorise le ping
+        iptables -t filter -A INPUT -p icmp -j ACCEPT
+        iptables -t filter -A OUTPUT -p icmp -j ACCEPT
+        # SSH
+        iptables -t filter -A INPUT -p tcp --dport 22 -j ACCEPT
+        iptables -t filter -A OUTPUT -p tcp --dport 22 -j ACCEPT
+        # Serveur DNS
+        iptables -t filter -A OUTPUT -p tcp --dport 53 -j ACCEPT
+        iptables -t filter -A OUTPUT -p udp --dport 53 -j ACCEPT
+        iptables -t filter -A INPUT -p tcp --dport 53 -j ACCEPT
+        iptables -t filter -A INPUT -p udp --dport 53 -j ACCEPT
+        # NTP - Pour avoir un serveur à l'heure
+        iptables -t filter -A OUTPUT -p udp --dport 123 -j ACCEPT
+        # HTTP - HTTPS : Connexions http rentrantes et sortantes
+        iptables -t filter -A OUTPUT -p tcp --dport 80 -j ACCEPT
+        iptables -t filter -A OUTPUT -p tcp --dport 443 -j ACCEPT
+        iptables -t filter -A INPUT -p tcp --dport 80 -j ACCEPT
+        iptables -t filter -A INPUT -p tcp --dport 443 -j ACCEPT
+        iptables -t filter -A INPUT -p tcp --dport 8443 -j ACCEPT
+        # FTP
+        iptables -t filter -A OUTPUT -p tcp --dport 21 -j ACCEPT
+        iptables -t filter -A OUTPUT -p tcp --dport 20 -j ACCEPT
+        iptables -t filter -A INPUT -p tcp --dport 20 -j ACCEPT
+        iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT
+        iptables -t filter -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        # -- MAIL
+        ## SMTP
+        iptables -t filter -A INPUT -p tcp --dport 25 -j ACCEPT
+        iptables -t filter -A OUTPUT -p tcp --dport 25 -j ACCEPT
+        ## POP3
+        iptables -t filter -A INPUT -p tcp --dport 110 -j ACCEPT
+        iptables -t filter -A OUTPUT -p tcp --dport 110 -j ACCEPT
+        ## IMAP
+        iptables -t filter -A INPUT -p tcp --dport 143 -j ACCEPT
+        iptables -t filter -A OUTPUT -p tcp --dport 143 -j ACCEPT
+        echo "trafic IMAP sur le port 143 autorisé"
+        ## POP3S
+        iptables -t filter -A INPUT -p tcp --dport 995 -j ACCEPT
+        iptables -t filter -A OUTPUT -p tcp --dport 995 -j ACCEPT
+        ## --
+        # MYSQL
+        iptables -t filter -A INPUT -p tcp --dport 3306 -j ACCEPT
+        iptables -t filter -A OUTPUT -p tcp --dport 3306 -j ACCEPT
+        # PHP-FPM
+        iptables -A INPUT -p tcp --dport 9000 -j ACCEPT
+        iptables -A OUTPUT -p tcp --dport 9000 -j ACCEPT
+        # IP - Bloquer une ip
+        iptables -A -s 100.100.100.100 -j DROP
+    ```
+- sudo sh ./parefeu.sh : Permet d'exécuter le fichier
+- sudo netstat --inet -npl : Pour connaître l'ensemble des ports utilisés par notre machine, `n` pour afficher les adresses numériques, `p` afficher les programes qui correspond à ce qui est ouvert et `l` pour listen
+
+- Si on veut qu'à chaque redémarrage les règles soit appliquer, on doit déplacer le fichier `parefeu.sh` dans `sudo mv parefeu.sh /etc/init.d`
+    > sudo mv parefeu.sh parefeu : On le renomme
+    > sudo chmod +x parefeu : Pour le rendre exécutable par tous le monde
+    > sudo update-rc.d parefeu defaults : Pour lancer cette commande au redémarrage
+    > sudo halt : Stoper le serveur pour voir si ça fonctionne correctement, ensuite redémarrer `o`
+        > sudo iptables -L : On verra que nos règles ont été pris en compte
+
+- En cas d'ajout d'un nouveau logiciel et que je souhaite lui ouvrir un port
+    > sudo vim /etc/init.d/parefeu
+    > sudo sh /etc/init.d/parefeu : Pour le prendre en compte tout de suite
+
+
+### Ufw - Permet de manipuler Iptable facilement
+
+- iptables -t filter -F && iptables -t filter -X : On vide les règles existantes qu'on avait mis dans iptables
+- sudo apt install ufw : Installer ufw
+- sudo ufw status : Status
+- sudo vim /etc/default/ufw
+    > IPV6 - yes : Si notre serveur le supporte le ipv6
+    > Par défaut toutes les connexions rentrantes sont bloquées, sortantes sont autorisées et redirigées sont bloquées
+- sudo ufw default allow incoming : Autoriser toutes les connexions venant de l'extérieur
+- sudo ufw default deny outgoing : Bloquer toutes les connexions vers de l'extérieur
+- sudo ufw default allow outgoing : Autoriser toutes les connexions vers de l'extérieur
+
+- Autoriser un port
+    > sudo ufw allow 22/tcp : Pour autoriser le port lié à ssh en tcp
+    > sudo ufw allow 80 : Apache
+    > sudo ufw allow 443
+    > sudo ufw allow 22
+    > sudo ufw enable
+
+- Supprimer une règle
+    > sudo ufw status : Pour lister les règles, `status verbose` pour voir plus d'informations
+    > sudo ufw status numbered : On peut lui demander d'afficher un chiffre pour chaque règle
+    > sudo ufw delete 2 : On utilise le chiffre pour supprimer notre règle
+        > Ou - sudo ufw delete allow 80 : La phrase qu'on n'a mis pour rajouter la règle
+
+- Il y'a beaucoup de règles qui sont similaires, donc ufw à penser à ça
+    > sudo ufw app list : Va nous lister l'ensemble des applications qui lui il connaît, ensuite on vas pouvoir lui dire d'autoriser le serveur web `WWW Full` veut dire à la fois pour le http et le https
+        > Pour comprendre ce qui se passe derrière `vim /etc/ufw/applications.d/ufw-webserver` pour http
+    > sudo ufw allow 'WWW Full' : Permet d'activer le serveur http, si on n'utilise un serveur `DNS` on l'active, `SMPT` ainsi de suite avec le nom qu'il a donné dans la liste des différents règles fourni par défaut 
+        > sudo ufw status verbose
+
+- On doit faire attention au faite que la configuration est faite pour les applications standart, donc si je veux activer la connexion ssh et que je regarde `/etc/ufw/applications.d/openssh-server`, on verra qu'il utilise le port `22` par défaut, donc si on n'a changé notre port il faudra l'activer manuellement avec le port qu'on n'a utilisé
+
+- Configuration avancée
+    > sudo ufw allow from 4.4.4.2 to any port 5789 : Si on veut bloquer l'accès ssh et l'autoriser seulement pour ip, `4.4.4.2` la cible ou l'ip, `any` destination
+        > sudo ufw status verbose
+    > sudo ufw deny from 4.4.4.2 to any port 80 : Pour bloquer une ip qui se met à spamé notre serveur
+    > sudo ufw deny from 4.4.4.2 : Pour bloquer une ip de manière globale sur notre serveur
+
+- sudo ufw reset : Supprime toutes les règles qu'on a écrit
+- sudo ufw reload : Pour recharger la configuration après modification du fichier de configuration
+- sudo vim /etc/ufw/before6.rules : Pour savoir ou se trouve toutes les règles qu'on n'a modifié
+    > vim /lib/ufw/user6.rules : Les règles qui correspond à mon utilisateurs
+
+
+
+
+
+
+
+
+
+
+Sur certaines distributions modernes, nftables remplace iptables mais la compatibilité reste souvent active
+iptables -L -v -n Lister toutes les règles
+Rediriger un port (NAT)
+
+# Rediriger le port 80 vers 8080
+sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
+
+3️⃣ Activer / désactiver UFW
+
+# Activer
+sudo ufw enable
+
+# Désactiver
+sudo ufw disable
+
+# Réactiver
+sudo ufw reload
+
+Bloquer tout par défaut à l’entrée et autoriser la sortie :
+
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+Ou autoriser tout à l’entrée et bloquer la sortie (moins courant) :
+
+sudo ufw default allow incoming
+sudo ufw default deny outgoing
+
+sudo ufw show raw         # voir les règles iptables sous-jacentes
+
+
+Logs UFW
+
+sudo less /var/log/ufw.log
+sudo tail -f /var/log/ufw.log
+
+9️⃣ Activer le logging
+
+sudo ufw logging on
+sudo ufw logging low    # options : off, low, medium, high, full
